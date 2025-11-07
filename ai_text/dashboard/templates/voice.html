@@ -1,0 +1,9 @@
+<form method="POST">
+    {% csrf_token %}
+    <button type="submit">🎤 Start Recording</button>
+</form>
+
+{% if transcript %}
+    <h3>Transcription:</h3>
+    <p>{{ transcript }}</p>
+{% endif %}

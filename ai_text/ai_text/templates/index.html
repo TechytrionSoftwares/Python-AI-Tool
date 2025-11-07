@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Transcription Tool</title>
+
+  <!-- Elegant font -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&family=Inter:wght@400;700&display=swap" rel="stylesheet">
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      height: 100vh;
+      overflow: hidden;
+      color: #fff;
+    }
+
+    /* Background Video */
+    video.background-video {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: -1;
+    }
+
+    /* Overlay for better readability */
+    .overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.55);
+      z-index: 0;
+    }
+
+    /* Hero Section */
+    .hero-container {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      text-align: center;
+      padding: 0 20px;
+      max-width: 950px;
+      margin: auto;
+    }
+
+    h1 {
+      font-size: 3.6rem;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 25px;
+      line-height: 1.2;
+      text-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+    }
+
+    h1 span {
+      background: linear-gradient(90deg, #00c6ff, #0072ff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    p {
+      font-size: 1.2rem;
+      color: #f8f8f8;
+      opacity: 0.95;
+      margin-bottom: 45px;
+      line-height: 1.7;
+    }
+
+    /* Button Group */
+    .btn-group {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    button {
+      padding: 14px 36px;
+      border: none;
+      border-radius: 50px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.35s ease;
+      letter-spacing: 0.5px;
+    }
+
+    .primary-btn {
+      background: linear-gradient(90deg, #0072ff, #00c6ff);
+      color: #fff;
+      box-shadow: 0 0 25px rgba(0, 114, 255, 0.4);
+    }
+
+    .primary-btn:hover {
+      background: linear-gradient(90deg, #00c6ff, #0072ff);
+      transform: translateY(-3px);
+      box-shadow: 0 0 40px rgba(0, 114, 255, 0.6);
+    }
+
+    .secondary-btn {
+      background: transparent;
+      border: 2px solid #00c6ff;
+      color: #00c6ff;
+    }
+
+    .secondary-btn:hover {
+      background: linear-gradient(90deg, #00c6ff, #0072ff);
+      color: #fff;
+      transform: translateY(-3px);
+    }
+
+    /* Popup Video */
+    .popup {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(10, 20, 35, 0.85);
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+
+    .popup.active {
+      display: flex;
+    }
+
+    .popup video {
+      width: 85%;
+      max-width: 900px;
+      border-radius: 14px;
+      box-shadow: 0 0 30px rgba(255, 255, 255, 0.5);
+    }
+
+    .close-btn {
+      position: absolute;
+      top: 30px;
+      right: 50px;
+      font-size: 36px;
+      color: #fff;
+      cursor: pointer;
+      font-weight: bold;
+      transition: 0.3s;
+    }
+
+    .close-btn:hover {
+      color: #00c6ff;
+      transform: scale(1.1);
+    }
+
+    @media (max-width: 768px) {
+      h1 {
+        font-size: 2.5rem;
+      }
+      p {
+        font-size: 1rem;
+      }
+      button {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Background video -->
+  <video class="background-video" autoplay muted loop playsinline>
+    <source src="https://cdn.pixabay.com/video/2023/03/22/155718-810722623_large.mp4" type="video/mp4">
+  </video>
+  <div class="overlay"></div>
+
+  <!-- Hero Section -->
+  <div class="hero-container">
+    <h1>Convert <span>Audio & Video</span> into Text Effortlessly</h1>
+    <p>Harness the power of AI to transcribe your audio and video recordings into clean, editable text — perfect for creators, businesses, and professionals.</p>
+    <div class="btn-group">
+      <button class="primary-btn" id="uploadBtn">Upload Your File</button>
+      <button class="secondary-btn" id="openPopup">▶ Watch Demo</button>
+    </div>
+  </div>
+
+  <!-- Video Popup -->
+  <div class="popup" id="videoPopup">
+    <span class="close-btn" id="closePopup">&times;</span>
+    <video controls autoplay>
+      <source src="https://cdn.pixabay.com/video/2023/03/22/155718-810722623_large.mp4" type="video/mp4">
+      Your browser does not support this video.
+    </video>
+  </div>
+
+  <script>
+    const popup = document.getElementById('videoPopup');
+    const openBtn = document.getElementById('openPopup');
+    const closeBtn = document.getElementById('closePopup');
+    const uploadBtn = document.getElementById('uploadBtn');
+
+    openBtn.addEventListener('click', () => popup.classList.add('active'));
+    closeBtn.addEventListener('click', () => {
+      popup.classList.remove('active');
+      popup.querySelector('video').pause();
+    });
+
+    uploadBtn.addEventListener('click', () => {
+      window.location.href = "/dashboard/";
+    });
+  </script>
+
+</body>
+</html>
