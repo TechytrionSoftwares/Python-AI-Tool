@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% load static %}
+{% block content %}
+<div class="recordings-container">
+  <h2><i class="fas fa-microphone"></i> Your Recordings</h2>
+
+  <form id="deleteForm" method="POST" action="{% url 'delete_recordings' %}">
+    {% csrf_token %}
+     <button type="submit" class="delete-btn">Delete Selected</button>
+    <table class="recordings-table">
+      <thead>
+        <tr>
+          <th><input type="checkbox" id="select-all"></th>
+          <th>Title</th>
+          <th>Duration (s)</th>
+          <th>Date</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for recording in recordings %}
+        <tr>
+          <td><input type="checkbox" name="selected_ids" value="{{ recording.id }}"></td>
+          <td><a href="{% url 'recording_detail' recording.id %}" style="color:#286be6; text-decoration:none;">{{ recording.title }}</a></td>
+          <td>{{ recording.duration|floatformat:2 }}</td>
+          <td>{{ recording.created_at|date:"m/d/Y" }}</td>
+          <td>Completed</td>
+          <td>
+            {% if recording.pdf_url %}
+              <a href="{{ recording.pdf_url }}" target="_blank">📄 PDF</a>
+            {% else %}
+              N/A
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" style="text-align:center;">No recordings yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+   
+  </form>
+
+  <div class="pagination">
+    {% if recordings.has_previous %}
+      <a href="?page={{ recordings.previous_page_number }}">&laquo;</a>
+    {% endif %}
+
+    {% for page_num in recordings.paginator.page_range %}
+      {% if page_num == recordings.number %}
+        <span class="active">{{ page_num }}</span>
+      {% else %}
+        <a href="?page={{ page_num }}">{{ page_num }}</a>
+      {% endif %}
+    {% endfor %}
+
+    {% if recordings.has_next %}
+      <a href="?page={{ recordings.next_page_number }}">&raquo;</a>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+  // Select all checkboxes
+  document.getElementById('select-all').addEventListener('click', function() {
+    const checked = this.checked;
+    document.querySelectorAll('input[name="selected_ids"]').forEach(cb => cb.checked = checked);
+  });
+</script>
+
+<style>
+.recordings-container {
+  width: 85%;
+  margin: 30px auto;
+  color: #fff;
+  background: rgba(255,255,255,0.12);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 0 15px rgba(255,255,255,0.1);
+}
+.recordings-container h2 {
+  color: #ddd;
+  text-align: left;
+  margin-bottom: 20px;
+}
+.recordings-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.recordings-table th, .recordings-table td {
+  padding: 12px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.recordings-table th {
+  color: #ddd;
+  text-align: left;
+}
+.recordings-table tr:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.delete-btn {
+  margin-top: 10px;
+  padding: 8px 15px;
+  background: #990000;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: white;
+  width:180px;
+  float: right;
+  margin-bottom: 20px;
+}
+#deleteForm td a{
+  color: #990000;
+    font-weight: 600;
+}
+.pagination {
+  margin-top: 20px;
+  text-align: center;
+}
+.pagination a, .pagination span {
+  margin: 0 5px;
+  padding: 5px 10px;
+  border-radius: 4px;
+  color: #fff;
+  text-decoration: none;
+}
+.pagination .active {
+  background: #990000;
+}
+</style>
+{% endblock %}

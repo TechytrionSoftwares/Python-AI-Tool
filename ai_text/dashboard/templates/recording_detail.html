@@ -1,0 +1,221 @@
+{% extends 'base.html' %}
+{% block title %}Recording Details{% endblock %}
+
+{% block content %}
+<style>
+body {
+  background: #0b0e11;
+  color: #fff;
+  font-family: "Inter", sans-serif;
+}
+.container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  padding: 40px 60px;
+  gap: 25px;
+}
+
+/* LEFT metrics panel */
+.metrics {
+  flex: 1 1 350px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 16px;
+  padding: 25px;
+  box-shadow: 0 0 15px rgba(0,0,0,0.4);
+}
+.metrics h2 {
+  color: #286be6;
+  font-size: 1.3rem;
+  margin-bottom: 15px;
+}
+.metric-box {
+  background: rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 12px 15px;
+  margin-bottom: 12px;
+}
+.metric-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.95rem;
+}
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.1);
+  margin-top: 8px;
+  overflow: hidden;
+}
+.progress {
+  height: 100%;
+  background: linear-gradient(90deg,#286be6,#0072ff);
+  border-radius: 6px;
+}
+
+/* Transcript panel */
+.transcript {
+  flex: 2 1 600px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 16px;
+  padding: 25px;
+  box-shadow: 0 0 15px rgba(0,0,0,0.4);
+}
+.transcript h3 {
+  color: #ff5555;
+  margin-top: 20px;
+}
+.transcript p {
+  color: #ddd;
+  line-height: 1.6;
+}
+.filler-tag {
+  background: rgba(255,255,255,0.08);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  margin: 3px;
+  display: inline-block;
+}
+
+/* Header */
+.header-info {
+  text-align: center;
+  margin-bottom: 30px;
+}
+.header-info h1 {
+  color: #286be6;
+  font-size: 2rem;
+}
+.header-info small {
+  color: #aaa;
+}
+
+/* Player box */
+.player-box {
+  margin-top: 25px;
+  text-align: center;
+}
+.player-box video,
+.player-box audio {
+  width: 90%;
+  max-width: 800px;
+  border-radius: 12px;
+  margin-top: 10px;
+  box-shadow: 0 0 20px rgba(0,0,0,0.4);
+}
+</style>
+
+<div class="header-info">
+  <h1>🎧 {{ rec.title }}</h1>
+  <small>Date: {{ rec.created_at|date:"Y-m-d H:i" }} | Duration: {{ rec.duration|floatformat:2 }} sec</small>
+
+  {% if rec.audio_url %}
+  <div class="player-box">
+    {% if ".mp4" in rec.audio_url|lower or ".webm" in rec.audio_url|lower or ".mov" in rec.audio_url|lower %}
+      <video controls>
+        <source src="{{ rec.audio_url }}" type="video/mp4">
+        Your browser does not support the video tag.
+      </video>
+    {% else %}
+      <audio controls>
+        <source src="{{ rec.audio_url }}" type="audio/mpeg">
+        Your browser does not support the audio element.
+      </audio>
+    {% endif %}
+  </div>
+{% endif %}
+
+</div>
+
+<div class="container">
+  <!-- LEFT METRICS PANEL -->
+  <div class="metrics">
+    <h2>🎯 Speaking Insights</h2>
+
+    {% if rec.pacing_data %}
+    <div class="metric-box">
+      <div class="metric-title">
+        <span>🏃 Pace</span>
+        <span>{{ rec.pacing_data.wpm }} WPM</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress" style="width:{{ rec.pacing_data.wpm|default:0|floatformat:0 }}%;"></div>
+      </div>
+      <small>{{ rec.pacing_data.pace_feedback }}</small>
+    </div>
+    {% endif %}
+
+    {% if rec.filler_data %}
+    <div class="metric-box">
+      <div class="metric-title">
+        <span>🗣️ Fillers Used</span>
+        <span>{{ rec.filler_data.total_fillers }}</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress" style="width:{{ rec.filler_data.fillers_per_minute|floatformat:0 }}%;"></div>
+      </div>
+      <small>{{ rec.filler_data.fillers_per_minute }} per minute</small>
+    </div>
+    {% endif %}
+
+    <canvas id="speechChart" width="350" height="200" style="margin-top:20px;"></canvas>
+  </div>
+
+  <!-- RIGHT TRANSCRIPT PANEL -->
+  <div class="transcript">
+    <h3>📝 Transcript</h3>
+    <p style="white-space:pre-line;">{{ rec.transcript }}</p>
+
+    {% if rec.filler_data %}
+    <h3>🗣️ Filler Word Analysis</h3>
+    <p>Total: {{ rec.filler_data.total_fillers }} | Per Minute: {{ rec.filler_data.fillers_per_minute }}</p>
+    {% for word, count in rec.filler_data.filler_frequency.items %}
+      <span class="filler-tag">{{ word }} × {{ count }}</span>
+    {% endfor %}
+    {% endif %}
+
+    {% if rec.grammar_data %}
+    <h3>🧠 Grammar Suggestions</h3>
+    <ul>
+    {% for issue in rec.grammar_data %}
+      <li>{{ issue.issue }} – <i>{{ issue.suggestions|join:", " }}</i></li>
+    {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Chart.js for visualization -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const ctx = document.getElementById('speechChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['Pace', 'Fillers', 'Grammar'],
+      datasets: [{
+        label: 'Performance Metrics',
+        data: [
+          {{ rec.pacing_data.wpm|default:0 }},
+          {{ rec.filler_data.total_fillers|default:0 }},
+          {{ rec.grammar_data|length|default:0 }}
+        ],
+        borderWidth: 1,
+        backgroundColor: ['#0072ff','#286be6','#ff5555']
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false }},
+      scales: {
+        y: { beginAtZero: true, ticks: { color: '#fff' }},
+        x: { ticks: { color: '#fff' }}
+      }
+    }
+  });
+});
+</script>
+{% endblock %}
