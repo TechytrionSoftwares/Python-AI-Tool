@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Register | Convert Anything to Text</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{
+      background:#0b0e11;
+      color:#fff;
+      font-family:"Inter",sans-serif;
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      min-height:100vh;
+    }
+    video.background-video{
+      position:fixed;top:0;left:0;width:100%;height:100vh;object-fit:cover;z-index:-2;
+    }
+    .overlay{
+      position:fixed;top:0;left:0;width:100%;height:100vh;
+      background:rgba(0,0,0,0.55);backdrop-filter:blur(10px);z-index:-1;
+    }
+
+    .register-box{
+      background:rgba(255,255,255,0.08);
+      border:1px solid rgba(255,255,255,0.15);
+      border-radius:16px;
+      padding:40px 35px;
+      width:100%;
+      max-width:420px;
+      text-align:center;
+    }
+    h1{font-size:30px;font-weight:700;margin-bottom:20px;}
+    h1 span{color:#990000;}
+
+    input{
+      width:100%;
+      padding:14px;
+      border-radius:10px;
+      border:none;
+      margin-bottom:15px;
+      background:rgba(255,255,255,0.12);
+      color:#fff;
+      font-size:15px;
+    }
+    input::placeholder{color:#ccc;}
+
+    button{
+      width:100%;
+      padding:14px;
+      border:none;
+      border-radius:10px;
+      background:#990000;
+      color:#fff;
+      font-weight:600;
+      font-size:16px;
+      cursor:pointer;
+      transition:0.25s;
+    }
+    button:hover{background:#b30000;}
+
+    .message {
+      margin-bottom:15px;
+      font-size:14px;
+      padding:10px;
+      border-radius:8px;
+    }
+    .message.error {background:rgba(255,0,0,0.1);color:#ff6666;border:1px solid rgba(255,0,0,0.3);}
+    .message.success {background:rgba(0,255,0,0.1);color:#90ee90;border:1px solid rgba(0,255,0,0.3);}
+
+    .bottom-text{margin-top:18px;font-size:14px;}
+    a{color:#00c6ff;text-decoration:none;}
+  </style>
+</head>
+
+<body>
+  <video autoplay muted loop playsinline class="background-video">
+    <source src="https://cdn.pixabay.com/video/2023/03/22/155718-810722623_large.mp4" type="video/mp4">
+  </video>
+  <div class="overlay"></div>
+
+  <div class="register-box">
+    <h1>Create Your <span>AI Text</span> Account</h1>
+
+    {% if messages %}
+      {% for message in messages %}
+        <div class="message {{ message.tags }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+
+    <form method="POST">
+      {% csrf_token %}
+      <input type="text" name="username" placeholder="Username" required>
+      <input type="email" name="email" placeholder="Email" required>
+      <input type="password" name="password" placeholder="Password" required>
+      <button type="submit">Register</button>
+    </form>
+
+    <p class="bottom-text">
+      Already have an account? <a href="{% url 'login' %}">Login here</a>
+    </p>
+  </div>
+</body>
+</html>

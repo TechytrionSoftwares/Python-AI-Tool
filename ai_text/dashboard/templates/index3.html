@@ -1,267 +1,34 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Convert Anything to Text</title>
+{% extends 'base.html' %}
+{% block title %}Practice | AI Effective Tool{% endblock %}
 
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-
-<style>
-/* GLOBAL */
-*{margin:0;padding:0;box-sizing:border-box;}
-body{
-  background:#0b0e11;
-  font-family:"Inter",sans-serif;
-  color:#fff;
-  display:flex;
-  justify-content:center;
-  align-items:flex-start;
-  min-height:100vh;
-  padding-top:40px;
-}
-
-/* Background Blur */
-video.background-video{
-  position:fixed;top:0;left:0;width:100%;height:100vh;object-fit:cover;z-index:-2;
-}
-.overlay{
-  position:fixed;top:0;left:0;width:100%;height:100vh;background:rgba(0,0,0,0.55);backdrop-filter:blur(10px);z-index:-1;
-}
-
-/* Container */
-.main-container{
-  width:100%;
-  max-width:850px;
-  margin:auto;
-  text-align:center;
-  padding:30px 20px;
-}
-
-/* Headings */
-h1{
-  font-size:42px;
-  font-weight:800;
-  margin-bottom:10px;
-}
-h1 span{color:#00c6ff;}
-.sub-text{
-  font-size:15px;
-  opacity:0.85;
-  margin-bottom:28px;
-}
-
-/* Tabs */
-.tabs{
-  display:flex;
-  justify-content:center;
-  gap:14px;
-  margin-bottom:26px;
-}
-.tab-btn{
-  padding:12px 24px;
-  border-radius:10px;
-  border:1px solid rgba(255,255,255,0.25);
-  background:rgba(255,255,255,0.08);
-  color:#fff;
-  font-weight:600;
-  cursor:pointer;
-  transition:0.25s;
-}
-.tab-btn:hover{background:#00c6ff33;}
-.tab-btn.active{
-  background:#00c6ff;
-  color:#000;
-  border-color:#00c6ff;
-}
-
-/* Panel Boxes */
-.card-box{
-  background:rgba(255,255,255,0.12);
-  padding:32px;
-  border-radius:16px;
-  border:1px solid rgba(255,255,255,0.22);
-  display:none;
-}
-
-/* Upload Area */
-.upload-area {
-  background: rgba(255,255,255,0.08);
-  border: 2px dashed rgba(255,255,255,0.25);
-  border-radius: 14px;
-  padding: 35px 20px;
-  cursor: pointer;
-  transition: .25s;
-  text-align:center;
-  margin-bottom:18px;
-  width:100%;
-  display:block;
-}
-.upload-area:hover {
-  background: rgba(0,198,255,0.1);
-  border-color:#00c6ff;
-}
-.upload-area .icon {
-  font-size:40px;
-  margin-bottom:10px;
-  color:#00c6ff;
-}
-.upload-area span {
-  display:block;
-  font-size:15px;
-  color:#ddd;
-}
-
-input.file-input {display:none;}
-
-.selected-file-name {
-  margin-top:8px;
-  color:#00c6ff;
-  font-size:14px;
-  font-weight:600;
-}
-
-/* Buttons */
-button{
-  width:100%;
-  padding:15px;
-  border-radius:10px;
-  border:none;
-  font-size:16px;
-  font-weight:600;
-  cursor:pointer;
-}
-
-.primary-btn{
-  background:linear-gradient(90deg,#00c6ff,#0072ff);
-  color:#fff;
-}
-
-/* Download Button (same gradient) */
-.btn-success{
-  display:inline-block;
-  background:linear-gradient(90deg,#00c6ff,#0072ff);
-  padding:10px 18px;
-  border-radius:8px;
-  color:#fff;
-  font-weight:600;
-  text-decoration:none;
-  margin-top:10px;
-  font-size:15px;
-}
-
-/* Output Cards */
-.output-card{
-  margin-top:22px;
-  background:#fff;
-  color:#000;
-  padding:18px;
-  border-radius:12px;
-  text-align:left;
-  line-height:1.6;
-}
-
-/* Section Card */
-.result-card{
-  background:#ffffff;
-  padding:20px;
-  border-radius:13px;
-  margin-top:18px;
-  color:#000;
-  text-align:left;
-  border-left:4px solid #00c6ff;
-}
-.section-title{
-  font-weight:700;
-  font-size:18px;
-  margin-bottom:12px;
-}
-
-/* Tags */
-.filler-tag{
-  display:inline-block;
-  background:#e7f7ff;
-  padding:6px 10px;
-  border-radius:6px;
-  font-size:14px;
-  margin:4px 4px 0 0;
-  border:1px solid #b3ecff;
-}
-
-/* Grammar Box */
-.grammar-box{
-  background:#fafafa;
-  border-radius:10px;
-  padding:16px;
-}
-.grammar-col-title{
-  font-weight:700;
-  padding:8px;
-  background:#ededed;
-  border-radius:6px;
-  margin-bottom:8px;
-}
-.grammar-text{
-  padding:10px;
-  background:#fff;
-  border-radius:6px;
-  font-size:14px;
-  margin-bottom:8px;
-  border:1px solid #ccc;
-}
-
-/* ✅ Match homepage — theme blue */
-.green{
-  color:#00c6ff;
-  font-weight:600;
-}
-</style>
-</head>
-
-<body>
-
-<video autoplay muted loop playsinline class="background-video">
-  <source src="https://cdn.pixabay.com/video/2023/03/22/155718-810722623_large.mp4" type="video/mp4">
-</video>
-<div class="overlay"></div>
-
+{% block content %}
+<!-- your existing main content below -->
 <div class="main-container">
-
-<h1>Convert Audio, Speech & Video to <span>Text</span></h1>
-<p class="sub-text">Fast. Accurate. AI-powered transcription & insights.</p>
+  <h1>Convert Audio, Speech & Video to <span>Text</span></h1>
+  <p class="sub-text">Fast. Accurate. AI-powered transcription & insights.</p>
 
 <div class="tabs">
-  <button class="tab-btn" data-tab="speech">Speech to Text1</button>
-  <button class="tab-btn active" data-tab="audio">Audio to Text1</button>
-  <button class="tab-btn" data-tab="video">Video to Text1</button>
+  <button class="tab-btn active" data-tab="audio">Audio to Text</button>
+  <button class="tab-btn" data-tab="video">Video to Text</button>
 </div>
 
-<!-- SPEECH TAB -->
-<div class="card-box" id="speech">
-  <h2 class="section-title">🎤 Live Speech Recognition</h2>
-  <button class="primary-btn" onclick="alert('Speech recognition coming soon!')">Start Listening</button>
-</div>
-
+<!-- ✅ Everything below is unchanged -->
 <!-- AUDIO TAB -->
 <div class="card-box" id="audio" style="display:block;">
   <h2 class="section-title">🎧 Upload Audio File</h2>
-
-  <form method="POST" enctype="multipart/form-data">
+  <form method="POST" enctype="multipart/form-data" action="{% url 'practice' %}">
     {% csrf_token %}
-
     <label class="upload-area" id="audioLabel">
       <div class="icon">⬆</div>
       <span><strong>Click or Drag & Drop</strong> to upload audio</span>
       <small style="opacity:.6;">MP3, WAV, M4A, FLAC</small>
     </label>
-
     <input type="file" name="audio_file" id="audioInput" class="file-input" accept=".mp3,.wav,.m4a,.flac">
     <div class="selected-file-name" id="audioFileName">No file selected</div>
-
     <button type="submit" class="primary-btn" style="margin-top:18px;">Convert Audio</button>
   </form>
 
-  {% if transcript %}
+  <!-- {% if transcript %}
   <div class="output-card">
     <p>{{ transcript }}</p>
     {% if pdf_url %}
@@ -274,7 +41,6 @@ button{
     <div class="section-title">🗣️ Filler Word Analysis</div>
     <p><strong>Total:</strong> {{ filler_analysis.total_fillers }}</p>
     <p><strong>Per Minute:</strong> {{ filler_analysis.fillers_per_minute }}</p>
-
     {% for word, count in filler_analysis.filler_frequency.items %}
       <span class="filler-tag">{{ word }} × {{ count }}</span>
     {% endfor %}
@@ -291,72 +57,136 @@ button{
 
   {% if grammar_results %}
   <div class="result-card">
-    <div class="section-title">📝 Grammar Suggestions</div>
-    <div class="grammar-box">
-      <div class="grammar-col-title">Original</div>
-      <div class="grammar-text">{{ grammar_results.0.original }}</div>
-
-      <div class="grammar-col-title">Suggestion</div>
-      <div class="grammar-text green">{{ grammar_results.0.suggestion }}</div>
+    <div class="section-title">📝 Grammar & Clarity Suggestions</div>
+    <div class="prose leading-relaxed">
+      {% if grammar_inline %}
+        <p>{{ grammar_inline|safe }}</p>
+      {% else %}
+        <p class="text-gray-500">No grammar improvements detected.</p>
+      {% endif %}
     </div>
+    <p class="text-sm text-gray-500 mt-3">
+      <span style="color:#d93025;">Red = Original mistake</span>,
+      <span style="color:#1a8917;">Green = Correction</span>
+    </p>
   </div>
   {% endif %}
-  {% endif %}
+  {% endif %} -->
 </div>
 
 <!-- VIDEO TAB -->
 <div class="card-box" id="video">
   <h2 class="section-title">🎬 Upload Video</h2>
-
-  <form method="POST" enctype="multipart/form-data">
+  <form method="POST" enctype="multipart/form-data" action="{% url 'practice' %}">
     {% csrf_token %}
-
     <label class="upload-area" id="videoLabel">
       <div class="icon">⬆</div>
       <span><strong>Click or Drag & Drop</strong> to upload video</span>
       <small style="opacity:.6;">MP4, MOV, MKV</small>
     </label>
-
     <input type="file" name="video_file" id="videoInput" class="file-input" accept="video/*">
     <div class="selected-file-name" id="videoFileName">No file selected</div>
-
     <button type="submit" class="primary-btn" style="margin-top:18px;">Convert Video</button>
   </form>
 
-  {% if video_transcript %}
-  <div class="output-card"><p>{{ video_transcript }}</p></div>
-  {% endif %}
+  <!-- {% if video_transcript or transcript %}
+  <div class="output-card">
+    <p>{{ video_transcript|default:transcript }}</p>
+    {% if pdf_url %}
+      <a href="{{ pdf_url }}" target="_blank" class="btn-success">Download PDF</a>
+    {% endif %}
+  </div>
+  {% endif %} -->
+</div>
 </div>
 
-</div>
 
+<!-- ✅ Processing Overlay + Success Notification -->
 <script>
-// Tabs
-document.querySelectorAll(".tab-btn").forEach(btn=>{
-  btn.addEventListener("click",()=>{
-    document.querySelectorAll(".tab-btn").forEach(x=>x.classList.remove("active"));
-    document.querySelectorAll(".card-box").forEach(x=>x.style.display="none");
-    btn.classList.add("active");
-    document.getElementById(btn.dataset.tab).style.display="block";
+document.addEventListener("DOMContentLoaded", function() {
+  // When user submits any form (audio or video)
+  document.querySelectorAll("form").forEach(form => {
+    form.addEventListener("submit", function(e) {
+      // Create overlay
+      const overlay = document.createElement("div");
+      overlay.id = "processing-overlay";
+      Object.assign(overlay.style, {
+        position: "fixed",
+        top: "0",
+        left: "0",
+        width: "100%",
+        height: "100%",
+        background: "rgba(0, 0, 0, 0.7)",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        alignItems: "center",
+        color: "#fff",
+        fontSize: "18px",
+        zIndex: "9999",
+        textAlign: "center",
+      });
+
+      overlay.innerHTML = `
+        <div>
+          <div style="
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4CAF50;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            margin: 0 auto;
+            animation: spin 1s linear infinite;">
+          </div>
+          <p style="margin-top:15px;line-height:1.5;">
+            File is being processed...
+          </p>
+        </div>
+      `;
+
+      // Add spinner animation
+      const style = document.createElement("style");
+      style.textContent = `
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `;
+      document.head.appendChild(style);
+
+      document.body.appendChild(overlay);
+    });
   });
 });
-
-// File Picker Fix
-
-const audioInput=document.getElementById("audioInput");
-document.getElementById("audioLabel").addEventListener("click",()=> audioInput.click());
-audioInput.addEventListener("change",()=> {
-  document.getElementById("audioFileName").textContent =
-    audioInput.files?.[0]?.name || "No file selected";
-});
-
-const videoInput=document.getElementById("videoInput");
-document.getElementById("videoLabel").addEventListener("click",()=> videoInput.click());
-videoInput.addEventListener("change",()=> {
-  document.getElementById("videoFileName").textContent =
-    videoInput.files?.[0]?.name || "No file selected";
-});
 </script>
+{% if transcript or video_transcript %}
+<script>
+  window.addEventListener("load", () => {
+    // Remove overlay if still visible
+    const overlay = document.getElementById("processing-overlay");
+    if (overlay) overlay.remove();
 
-</body>
-</html>
+    // Show success toast
+    const toast = document.createElement("div");
+    toast.textContent = "✅ Processing complete! Your results are ready.";
+    Object.assign(toast.style, {
+      position: "fixed",
+      bottom: "20px",
+      right: "20px",
+      background: "#4CAF50",
+      color: "#fff",
+      padding: "10px 15px",
+      borderRadius: "8px",
+      boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+      fontSize: "14px",
+      zIndex: "10000",
+    });
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 4000);
+  });
+</script>
+{% endif %}
+
+{% endblock %}
+
+

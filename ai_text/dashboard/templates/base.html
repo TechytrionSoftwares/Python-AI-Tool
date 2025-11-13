@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}AI Effective Tool{% endblock %}</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+/* ✅ Shared Navbar */
+body {
+  margin: 0;
+  font-family: "Inter", sans-serif;
+  background: #0b0e11;
+  color: #fff;
+  padding-top: 80px;
+}
+.navbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  background: #061321;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 28px;
+  z-index: 1000;
+}
+.navbar .brand {
+  font-weight: 700;
+  color: #fff;
+  font-size: 18px;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.navbar .menu a {
+  color: #ddd;
+  text-decoration: none;
+  margin-left: 22px;
+  font-weight: 600;
+  transition: 0.25s;
+}
+.navbar .menu a:hover,
+.navbar .menu a.active {
+  color: #990000;
+}
+/* GLOBAL */
+*{margin:0;padding:0;box-sizing:border-box;}
+body{
+  background:#0b0e11;
+  font-family:"Inter",sans-serif;
+  color:#fff;
+  display:block;
+  justify-content:center;
+  align-items:flex-start;
+  min-height:100vh;
+  padding-top:80px; /* ✅ more top padding for navbar */
+}
+
+/* Top Navbar */
+.navbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  background: #061321;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 28px;
+  z-index: 1000;
+}
+.navbar .brand {
+  font-weight: 700;
+  color: #fff;
+  font-size: 18px;
+  letter-spacing: 0.5px;
+}
+.navbar .menu a {
+  color: #ddd;
+  text-decoration: none;
+  margin-left: 22px;
+  font-weight: 600;
+  transition: 0.25s;
+}
+.navbar .menu a:hover,
+.navbar .menu a.active {
+  color: #990000;
+}
+
+/* Background Blur */
+video.background-video{
+  position:fixed;top:0;left:0;width:100%;height:100vh;object-fit:cover;z-index:-2;
+}
+.overlay{
+  position:fixed;top:0;left:0;width:100%;height:100vh;background:rgba(0,0,0,0.55);backdrop-filter:blur(10px);z-index:-1;
+}
+
+/* Container */
+.main-container{
+  width:100%;
+  max-width:850px;
+  margin:auto;
+  text-align:center;
+  padding:30px 20px;
+}
+
+/* Headings */
+h1{
+  font-size:42px;
+  font-weight:800;
+  margin-bottom:10px;
+}
+h1 span{color:#990000;}
+.sub-text{
+  font-size:15px;
+  opacity:0.85;
+  margin-bottom:28px;
+}
+
+/* Tabs */
+.tabs{
+  display:flex;
+  justify-content:center;
+  gap:14px;
+  margin-bottom:26px;
+}
+.tab-btn{
+  padding:12px 24px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,0.25);
+  background:rgba(255,255,255,0.08);
+  color:#fff;
+  font-weight:600;
+  cursor:pointer;
+  transition:0.25s;
+}
+.tab-btn:hover{background:#00c6ff33;}
+.tab-btn.active{
+  background:#990000;
+  color:#fff;
+  border-color:#990000;
+}
+
+/* Panel Boxes */
+.card-box{
+  background:rgba(255,255,255,0.12);
+  padding:32px;
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,0.22);
+  display:none;
+}
+
+/* Upload Area */
+.upload-area {
+  background: rgba(255,255,255,0.08);
+  border: 2px dashed rgba(255,255,255,0.25);
+  border-radius: 14px;
+  padding: 35px 20px;
+  cursor: pointer;
+  transition: .25s;
+  text-align:center;
+  margin-bottom:18px;
+  width:100%;
+  display:block;
+}
+.upload-area:hover {
+  background: rgba(0,198,255,0.1);
+  border-color:#990000;
+}
+.upload-area .icon {
+  font-size:40px;
+  margin-bottom:10px;
+  color:#990000;
+}
+.upload-area span {
+  display:block;
+  font-size:15px;
+  color:#ddd;
+}
+
+input.file-input {display:none;}
+
+.selected-file-name {
+  margin-top:8px;
+  color:#990000;
+  font-size:14px;
+  font-weight:600;
+}
+
+/* Buttons */
+button{
+  width:100%;
+  padding:15px;
+  border-radius:10px;
+  border:none;
+  font-size:16px;
+  font-weight:600;
+  cursor:pointer;
+}
+
+.primary-btn{
+  background:#286be6;
+  color:#fff;
+}
+
+/* Download Button */
+.btn-success{
+  display:inline-block;
+  background:#286be6;
+  padding:10px 18px;
+  border-radius:8px;
+  color:#fff;
+  font-weight:600;
+  text-decoration:none;
+  margin-top:10px;
+  font-size:15px;
+}
+
+/* Output Cards */
+.output-card{
+  margin-top:22px;
+  background:#fff;
+  color:#000;
+  padding:18px;
+  border-radius:12px;
+  text-align:left;
+  line-height:1.6;
+}
+
+/* Section Card */
+.result-card{
+  background:#ffffff;
+  padding:20px;
+  border-radius:13px;
+  margin-top:18px;
+  color:#000;
+  text-align:left;
+  border-left:4px solid #990000;
+}
+.section-title{
+  font-weight:700;
+  font-size:18px;
+  margin-bottom:12px;
+}
+
+/* Tags */
+.filler-tag{
+  display:inline-block;
+  background:#e7f7ff;
+  padding:6px 10px;
+  border-radius:6px;
+  font-size:14px;
+  margin:4px 4px 0 0;
+  border:1px solid #b3ecff;
+}
+
+/* Grammar Box */
+.grammar-box{
+  background:#fafafa;
+  border-radius:10px;
+  padding:16px;
+}
+.grammar-col-title{
+  font-weight:700;
+  padding:8px;
+  background:#ededed;
+  border-radius:6px;
+  margin-bottom:8px;
+}
+.grammar-text{
+  padding:10px;
+  background:#fff;
+  border-radius:6px;
+  font-size:14px;
+  margin-bottom:8px;
+  border:1px solid #ccc;
+}
+
+.green{
+  color:#990000;
+  font-weight:600;
+}
+
+.grammar-box {
+  background: #f9f9f9;
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.grammar-col-title {
+  font-weight: 600;
+  color: #333;
+  margin-top: 5px;
+}
+
+.grammar-text {
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 5px;
+}
+
+.grammar-text.green {
+  color: #1b5e20;
+  font-weight: 600;
+}
+</style>
+</head>
+
+<body>
+    <video autoplay muted loop playsinline class="background-video">
+  <source src="https://cdn.pixabay.com/video/2023/03/22/155718-810722623_large.mp4" type="video/mp4">
+</video>
+<div class="overlay"></div>
+<!-- ✅ Common Header -->
+<nav class="navbar">
+  <div class="brand"><img src="https://msgsndr-private.storage.googleapis.com/companyPhotos/d0babe0d-3b32-4b9d-8d9a-5f1b5cc9aecc.png" style="width: 70px;">AI Tool</div>
+  <div class="menu">
+    <a href="{% url 'practice' %}" class="{% if request.resolver_match.url_name == 'practice' %}active{% endif %}">Practice</a>
+    <a href="{% url 'recording' %}" class="{% if request.resolver_match.url_name == 'recording' %}active{% endif %}">Recording</a>
+    {% if user.is_authenticated %}
+      <a href="{% url 'logout' %}">Logout</a>
+    {% endif %}
+  </div>
+</nav>
+
+<!-- ✅ Page-Specific Content -->
+<main>
+  {% block content %}{% endblock %}
+</main>
+<script>
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const tabName = btn.dataset.tab;
+    localStorage.setItem("activeTab", tabName);
+    switchTab(tabName);
+  });
+});
+
+function switchTab(tabName) {
+  document.querySelectorAll(".tab-btn").forEach(x => x.classList.remove("active"));
+  document.querySelectorAll(".card-box").forEach(x => x.style.display = "none");
+  document.querySelector(`[data-tab='${tabName}']`).classList.add("active");
+  document.getElementById(tabName).style.display = "block";
+}
+
+window.addEventListener("load", () => {
+  const savedTab = localStorage.getItem("activeTab") || "audio";
+  switchTab(savedTab);
+});
+
+const audioInput = document.getElementById("audioInput");
+document.getElementById("audioLabel").addEventListener("click", () => audioInput.click());
+audioInput.addEventListener("change", () => {
+  document.getElementById("audioFileName").textContent =
+    audioInput.files?.[0]?.name || "No file selected";
+});
+
+const videoInput = document.getElementById("videoInput");
+document.getElementById("videoLabel").addEventListener("click", () => videoInput.click());
+videoInput.addEventListener("change", () => {
+  document.getElementById("videoFileName").textContent =
+    videoInput.files?.[0]?.name || "No file selected";
+});
+</script>
+</body>
+</html>

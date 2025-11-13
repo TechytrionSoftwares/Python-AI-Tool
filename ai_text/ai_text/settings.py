@@ -11,6 +11,15 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 import os
 from pathlib import Path
+from django.contrib.messages import constants as messages
+
+
+
+MESSAGE_TAGS = {
+    messages.ERROR: 'error',
+    messages.SUCCESS: 'success',
+}
+
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -27,7 +36,12 @@ SECRET_KEY = 'django-insecure-=6sy0#3tt7y^!h)ks2tnz-bea7-(g5r%es726x+c$6pagu^5+n
 DEBUG = True
 
 # ALLOWED_HOSTS = []
-ALLOWED_HOSTS = ['3.149.156.238', 'localhost', '127.0.0.1', 'https://ai.effectivepresentations.com','https://ai.effectivepresentations.com:8000/']
+ALLOWED_HOSTS = [
+    '3.149.156.238',
+    'localhost',
+    '127.0.0.1',
+    'ai.effectivepresentations.com'
+]
 
 
 # Application definition
@@ -51,6 +65,13 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+LOGIN_URL = 'login'
+LOGIN_REDIRECT_URL = 'dashboard'
+LOGOUT_REDIRECT_URL = 'login'
+
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 7  # 7 days
 
 ROOT_URLCONF = 'ai_text.urls'
 
@@ -79,31 +100,48 @@ WSGI_APPLICATION = 'ai_text.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'ai_db',
-        'USER': 'user_mike',
-        'PASSWORD': 'admin@123_ai',
+        'NAME': 'ep-ai',
+        'USER': 'postgres',
+        'PASSWORD': 'root',
         'HOST': 'localhost',
         'PORT': '5432',
     }
 }
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
+#     }
+# }
+
+
 
 
 INSTALLED_APPS += ['storages']
 
-# AWS S3 Settings
 AWS_ACCESS_KEY_ID = 'AKIA5MB25RZW277YOLHT'
 AWS_SECRET_ACCESS_KEY = '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'
-AWS_STORAGE_BUCKET_NAME = 'my-django-media-9834'
-AWS_S3_REGION_NAME = 'us-east-1'
+AWS_STORAGE_BUCKET_NAME = 'django-files-874'
+AWS_S3_REGION_NAME = 'us-east-2'
 AWS_S3_SIGNATURE_VERSION = 's3v4'
 AWS_DEFAULT_ACL = None
-AWS_S3_FILE_OVERWRITE = False
 AWS_QUERYSTRING_AUTH = False
+
+
+# AWS_ACCESS_KEY_ID = 'AKIA5MB25RZWXYQM2ZO7'
+# AWS_SECRET_ACCESS_KEY = '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'
+
 
 # Media files storage
 DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/' 
 
-MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/'
+
+MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_URL = "/media/"
+
+DATA_UPLOAD_MAX_MEMORY_SIZE = 104857600  # 100 MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 104857600  # 100 MB
 
 
 # Password validation
