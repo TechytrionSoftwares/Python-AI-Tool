@@ -40,7 +40,8 @@ ALLOWED_HOSTS = [
     '3.149.156.238',
     'localhost',
     '127.0.0.1',
-    'ai.effectivepresentations.com'
+    'ai.effectivepresentations.com',
+    'ec2-3-149-156-238.us-east-2.compute.amazonaws.com'
 ]
 
 
