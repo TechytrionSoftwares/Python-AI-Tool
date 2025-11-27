@@ -19,8 +19,10 @@ class Recording(models.Model):
     filler_data = models.JSONField(blank=True, null=True)
     pacing_data = models.JSONField(blank=True, null=True)
     grammar_data = models.JSONField(blank=True, null=True)
+    # tone_pause_data = models.JSONField(default=dict, blank=True)
     duration = models.FloatField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
+    # grammar_inline = models.TextField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.title} ({self.user.username})"
