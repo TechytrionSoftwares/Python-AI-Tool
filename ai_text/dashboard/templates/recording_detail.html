@@ -12,210 +12,653 @@ body {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  padding: 40px 60px;
+  padding: 20px 60px;
   gap: 25px;
+  padding-top:0px;
 }
-
-/* LEFT metrics panel */
-.metrics {
-  flex: 1 1 350px;
+.metrics, .transcript {
   background: rgba(255,255,255,0.05);
   border-radius: 16px;
-  padding: 25px;
   box-shadow: 0 0 15px rgba(0,0,0,0.4);
+  padding: 25px;
 }
-.metrics h2 {
-  color: #286be6;
-  font-size: 1.3rem;
-  margin-bottom: 15px;
+.metrics { flex: 1 1 350px; }
+.transcript { flex: 2 1 600px; }
+
+.header-info {
+  text-align: left;
+  margin-bottom: 30px;
+  padding-left: 60px;
 }
-.metric-box {
+.header-info h1 { color: #286be6; font-size: 24px; margin-bottom:0px; }
+.header-info small {
+    color: #aaa;
+    font-style: italic;
+    padding-left: 38px;
+}
+.oral-score {
+    background: #990000;
+    color: white;
+    padding: 10px 25px;
+    display: inline-block;
+    border-radius: 8px;
+    font-weight: 600;
+    margin-top: 10px;
+    position: fixed;
+    right: 0;
+    top: 80px;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.workon-box {
   background: rgba(255,255,255,0.08);
   border-radius: 12px;
-  padding: 12px 15px;
   margin-bottom: 12px;
+  padding: 12px 15px;
+  transition: background 0.2s;
+  cursor: pointer;
 }
-.metric-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 0.95rem;
+.workon-box:hover {
+  background: rgba(255,255,255,0.12);
 }
 .progress-bar {
   width: 100%;
   height: 8px;
-  border-radius: 6px;
   background: rgba(255,255,255,0.1);
+  border-radius: 6px;
   margin-top: 8px;
-  overflow: hidden;
 }
 .progress {
   height: 100%;
-  background: linear-gradient(90deg,#286be6,#0072ff);
   border-radius: 6px;
+  background: linear-gradient(90deg, #00c6ff, #0072ff);
 }
 
-/* Transcript panel */
-.transcript {
-  flex: 2 1 600px;
+.transcript h3 { color: #ff5555; margin-top: 20px; }
+.transcript p { color: #ddd; line-height: 1.6; }
+
+.chart-box {
   background: rgba(255,255,255,0.05);
-  border-radius: 16px;
-  padding: 25px;
-  box-shadow: 0 0 15px rgba(0,0,0,0.4);
-}
-.transcript h3 {
-  color: #ff5555;
+  border-radius: 12px;
+  padding: 15px;
   margin-top: 20px;
 }
-.transcript p {
-  color: #ddd;
-  line-height: 1.6;
+
+/* Grammar Analysis Styles */
+.grammar-section {
+    border-radius: 16px;
+    padding: 25px;
+    padding-left: 0px;
+    padding-right: 0;
+    margin: 0;
+    box-shadow: 0 0 15px rgba(0,0,0,0.4);
 }
+
+.grammar-section h3 {
+    color: #00c6ff;
+    margin-bottom: 20px;
+    font-size: 20px;
+}
+
+.stats {
+    background: rgba(255,255,255,0.08);
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.stats p {
+    margin: 5px 0;
+    color: #ddd;
+}
+
+.corrected-preview {
+    margin-bottom: 25px;
+}
+
+.corrected-preview h4 {
+    color: #1a8917;
+    margin-bottom: 10px;
+}
+
+.highlighted-text {
+    background: rgba(255,255,255,0.08);
+    padding: 20px;
+    border-radius: 10px;
+    line-height: 1.9;
+    font-size: 16px;
+    color: #fff;
+    border-left: 4px solid #1a8917;
+}
+
+.highlighted-text del {
+    background: rgba(217, 48, 37, 0.2);
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+.highlighted-text ins {
+    background: rgba(26, 137, 23, 0.2);
+    padding: 2px 4px;
+    border-radius: 3px;
+    text-decoration: none;
+}
+
+.error-details {
+    margin-top: 20px;
+}
+
+.error-details h4 {
+    color: #ff5555;
+    margin-bottom: 15px;
+}
+
+.error-details ul {
+    list-style: none;
+    padding: 0;
+}
+
+.error-details li {
+    background: rgba(255,255,255,0.08);
+    padding: 15px;
+    margin: 12px 0;
+    border-radius: 8px;
+    border-left: 3px solid #4285f4;
+    line-height: 1.6;
+}
+
+.error-details li strong {
+    color: #00c6ff;
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+}
+
 .filler-tag {
-  background: rgba(255,255,255,0.08);
-  border-radius: 8px;
-  padding: 4px 10px;
-  font-size: 0.85rem;
-  margin: 3px;
-  display: inline-block;
+    display: inline-block;
+    background: rgba(255,85,85,0.2);
+    color: #ff5555;
+    padding: 5px 12px;
+    border-radius: 15px;
+    margin: 5px;
+    font-size: 14px;
 }
 
-/* Header */
-.header-info {
+/* Modal styles */
+#metricModal {
+  display: none;
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0,0,0,0.7);
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+#metricModal.show {
+  display: flex;
+  opacity: 1;
+}
+.modal-content {
+  background: #11161c;
+  padding: 25px;
+  border-radius: 14px;
+  width: 420px;
   text-align: center;
-  margin-bottom: 30px;
-}
-.header-info h1 {
-  color: #286be6;
-  font-size: 2rem;
-}
-.header-info small {
-  color: #aaa;
-}
-
-/* Player box */
-.player-box {
-  margin-top: 25px;
-  text-align: center;
-}
-.player-box video,
-.player-box audio {
-  width: 90%;
-  max-width: 800px;
-  border-radius: 12px;
-  margin-top: 10px;
+  color: #fff;
   box-shadow: 0 0 20px rgba(0,0,0,0.4);
+  transform: scale(0.9);
+  animation: zoomIn 0.4s forwards;
+}
+@keyframes zoomIn { to { transform: scale(1); } }
+.modal-content h3 { color: #00c6ff; margin-bottom: 10px; }
+.modal-content p { color: #ccc; line-height: 1.6; }
+.improve-list {
+  text-align: left;
+  color: #ddd;
+  margin-top: 10px;
+  font-size: 0.95rem;
+}
+.improve-list li { margin: 6px 0; }
+.close-btn {
+  background: #ff4444;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  margin-top: 15px;
+  cursor: pointer;
+  font-weight: bold;
+}
+.close-btn:hover { background: #cc0000; }
+
+/* PDF Button */
+.download-btn {
+  margin-top: 25px;
+  display: inline-block;
+  background: #0072ff;
+  padding: 10px 20px;
+  border-radius: 8px;
+  color: white;
+  font-weight: bold;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.download-btn:hover { background: #005fd1; }
+
+.speaking-tips-section {
+    background: rgba(255,255,255,0.05);
+    border-radius: 16px;
+    padding: 25px;
+    margin: 20px 60px;
+    box-shadow: 0 0 15px rgba(0,0,0,0.4);
+}
+
+.speaking-tips-section h3 {
+    color: #ffbb33;
+    margin-bottom: 20px;
+    font-size: 20px;
+}
+
+.tip-card {
+    background: rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 20px;
+    margin: 15px 0;
+    border-left: 4px solid;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.tip-card:hover {
+    transform: translateX(5px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+}
+
+.tip-card.severity-high {
+    border-left-color: #ff4444;
+    background: rgba(255, 68, 68, 0.1);
+}
+
+.tip-card.severity-medium {
+    border-left-color: #ffbb33;
+    background: rgba(255, 187, 51, 0.1);
+}
+
+.tip-card.severity-low {
+    border-left-color: #00c851;
+    background: rgba(0, 200, 81, 0.1);
+}
+
+.tip-card.severity-none {
+    border-left-color: #00c6ff;
+    background: rgba(0, 198, 255, 0.1);
+}
+
+.tip-category {
+    color: #00c6ff;
+    font-weight: bold;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
+
+.tip-issue {
+    color: #fff;
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.tip-suggestion {
+    color: #ddd;
+    line-height: 1.6;
+    font-size: 15px;
+}
+
+.tip-icon {
+    font-size: 24px;
+    margin-right: 10px;
+    vertical-align: middle;
 }
 </style>
 
 <div class="header-info">
   <h1>🎧 {{ rec.title }}</h1>
+  <div id="oral-score" class="oral-score">Calculating score...</div>
   <small>Date: {{ rec.created_at|date:"Y-m-d H:i" }} | Duration: {{ rec.duration|floatformat:2 }} sec</small>
-
-  {% if rec.audio_url %}
-  <div class="player-box">
-    {% if ".mp4" in rec.audio_url|lower or ".webm" in rec.audio_url|lower or ".mov" in rec.audio_url|lower %}
-      <video controls>
-        <source src="{{ rec.audio_url }}" type="video/mp4">
-        Your browser does not support the video tag.
-      </video>
-    {% else %}
-      <audio controls>
-        <source src="{{ rec.audio_url }}" type="audio/mpeg">
-        Your browser does not support the audio element.
-      </audio>
-    {% endif %}
-  </div>
-{% endif %}
-
 </div>
 
 <div class="container">
-  <!-- LEFT METRICS PANEL -->
+  <!-- LEFT ANALYSIS PANEL -->
   <div class="metrics">
-    <h2>🎯 Speaking Insights</h2>
-
-    {% if rec.pacing_data %}
-    <div class="metric-box">
-      <div class="metric-title">
-        <span>🏃 Pace</span>
-        <span>{{ rec.pacing_data.wpm }} WPM</span>
-      </div>
-      <div class="progress-bar">
-        <div class="progress" style="width:{{ rec.pacing_data.wpm|default:0|floatformat:0 }}%;"></div>
-      </div>
-      <small>{{ rec.pacing_data.pace_feedback }}</small>
+    <h2 style="margin-bottom:20px;">🎯 What to Work On</h2>
+    <div class="workon-box" onclick="toggleModal('energy')">
+      ⚡ Energy <span style="float:right;" id="energyVal">--%</span>
+      <div class="progress-bar"><div class="progress" id="energyBar"></div></div>
     </div>
-    {% endif %}
 
-    {% if rec.filler_data %}
-    <div class="metric-box">
-      <div class="metric-title">
-        <span>🗣️ Fillers Used</span>
-        <span>{{ rec.filler_data.total_fillers }}</span>
-      </div>
-      <div class="progress-bar">
-        <div class="progress" style="width:{{ rec.filler_data.fillers_per_minute|floatformat:0 }}%;"></div>
-      </div>
-      <small>{{ rec.filler_data.fillers_per_minute }} per minute</small>
+    <div class="workon-box" onclick="toggleModal('conciseness')">
+      ✂️ Conciseness <span style="float:right;" id="concisenessVal">--%</span>
+      <div class="progress-bar"><div class="progress" id="concisenessBar"></div></div>
     </div>
-    {% endif %}
+
+    <div class="workon-box" onclick="toggleModal('confidence')">
+      🌟 Confidence <span style="float:right;" id="confidenceVal">--%</span>
+      <div class="progress-bar"><div class="progress" id="confidenceBar"></div></div>
+    </div>
 
     <canvas id="speechChart" width="350" height="200" style="margin-top:20px;"></canvas>
   </div>
 
   <!-- RIGHT TRANSCRIPT PANEL -->
   <div class="transcript">
-    <h3>📝 Transcript</h3>
+    <h3>📝 Original Transcript</h3>
     <p style="white-space:pre-line;">{{ rec.transcript }}</p>
-
-    {% if rec.filler_data %}
-    <h3>🗣️ Filler Word Analysis</h3>
-    <p>Total: {{ rec.filler_data.total_fillers }} | Per Minute: {{ rec.filler_data.fillers_per_minute }}</p>
-    {% for word, count in rec.filler_data.filler_frequency.items %}
-      <span class="filler-tag">{{ word }} × {{ count }}</span>
-    {% endfor %}
+    {% if grammar_inline %}
+<div class="grammar-section">
+    <h3>📝 Grammar Analysis {% if grammar_data.issues %}({{ grammar_data.issues }} issue{{ grammar_data.issues|pluralize }} found){% endif %}</h3>
+    
+    {% if grammar_data.issues > 0 %}
+    <div class="stats">
+        <p>✅ <strong></strong>Context-aware grammar corrections</p>
+        <p>🎯 <strong>Issues Found:</strong> {{ grammar_data.issues }}</p>
+    </div>
     {% endif %}
-
-    {% if rec.grammar_data %}
-    <h3>🧠 Grammar Suggestions</h3>
-    <ul>
-    {% for issue in rec.grammar_data %}
-      <li>{{ issue.issue }} – <i>{{ issue.suggestions|join:", " }}</i></li>
-    {% endfor %}
-    </ul>
+    
+    <!-- Inline Corrected Text with Highlights -->
+    <div class="corrected-preview">
+        <h4>💡 Corrected Version (with highlights):</h4>
+        <div class="highlighted-text">
+            {{ grammar_inline|safe }}
+        </div>
+        <small style="color:#aaa; display:block; margin-top:10px;">
+            <del style='color:#d93025;'>Red strikethrough</del> = Error | 
+            <ins style='color:#1a8917;font-weight:bold;'>Green text</ins> = Correction
+        </small>
+    </div>
+    
+    <!-- Detailed Error List -->
+    {% if grammar_results %}
+    <div class="error-details">
+        <h4>🔍 Detailed Corrections:</h4>
+        <ul>
+        {% for error in grammar_results %}
+            <li>
+                <strong>{{ error.type|default:"Grammar"|title }}:</strong><br>
+                <span style="font-size:15px;">
+                    "<span style="color:#d93025;">{{ error.original }}</span>" 
+                    → 
+                    "<span style="color:#1a8917;">{{ error.correction }}</span>"
+                </span>
+                <br>
+                <small style="color:#aaa; margin-top:5px; display:block;">
+                    {% if error.explanation %}
+                        💬 {{ error.explanation }}
+                    {% elif error.issue %}
+                        💬 {{ error.issue }}
+                    {% endif %}
+                </small>
+            </li>
+        {% endfor %}
+        </ul>
+    </div>
     {% endif %}
+</div>
+{% else %}
+<div class="grammar-section">
+    <h3>📝 Grammar Analysis</h3>
+    <div class="stats">
+        <p style="color:#1a8917;">✅ No grammar issues detected! Excellent work!</p>
+    </div>
+</div>
+{% endif %}
   </div>
 </div>
 
-<!-- Chart.js for visualization -->
+<!-- GRAMMAR ANALYSIS SECTION (Full Width) -->
+
+<!-- Speaking Improvement Tips Section -->
+{% if speaking_tips %}
+<div class="speaking-tips-section">
+    <h3>💡 Personalized Speaking Improvement Tips</h3>
+    
+    {% for tip in speaking_tips %}
+    <div class="tip-card severity-{{ tip.severity }}">
+        <div class="tip-category">
+            {% if tip.category == "Filler Words" %}
+                <span class="tip-icon">🗣️</span>
+            {% elif tip.category == "Speaking Pace" %}
+                <span class="tip-icon">⚡</span>
+            {% elif tip.category == "Grammar" %}
+                <span class="tip-icon">📝</span>
+            {% else %}
+                <span class="tip-icon">✨</span>
+            {% endif %}
+            {{ tip.category }}
+        </div>
+        
+        <div class="tip-issue">
+            {{ tip.issue }}
+        </div>
+        
+        <div class="tip-suggestion">
+            💬 {{ tip.suggestion }}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Keep your existing media player section below this -->
+<!-- Media Player -->
+{% if rec.audio_url %}
+  <div class="player-box" style="margin:20px 60px; text-align: center; background:rgba(255,255,255,0.05); padding:20px; border-radius:16px;">
+    <h3 style="color:#00c6ff; margin-bottom:15px;">🎥 Recording Playback</h3>
+    {% if ".mp4" in rec.audio_url|lower or ".webm" in rec.audio_url|lower or ".mov" in rec.audio_url|lower %}
+      <video controls width="700" style="border-radius:8px;">
+        <source src="{{ rec.audio_url }}" type="video/mp4">
+      </video>
+    {% else %}
+      <audio controls style="width:100%; max-width:700px;">
+        <source src="{{ rec.audio_url }}" type="audio/mpeg">
+      </audio>
+    {% endif %}
+  </div>
+{% endif %}
+
+<!-- Modal -->
+<div id="metricModal">
+  <div class="modal-content">
+    <h3 id="metricTitle">Metric Info</h3>
+    <p id="metricDescription"></p>
+    <ul id="improveList" class="improve-list"></ul>
+    <button class="close-btn" onclick="closeModal()">Close</button>
+  </div>
+</div>
+
+<!-- Chart.js + jsPDF -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
 <script>
+let energy, conciseness, confidence;
+let modalOpen = false;
+
 document.addEventListener("DOMContentLoaded", function() {
+  const wpm = {{ rec.pacing_data.wpm|default:0 }};
+  const fillersPerMin = {{ rec.filler_data.fillers_per_minute|default:0 }};
+  const grammarIssues = {{ grammar_data.issues|default:0 }};
+
+  const clamp = num => Math.max(0, Math.min(100, num));
+
+  energy = clamp((wpm / 150) * 100);
+  conciseness = clamp(100 - (fillersPerMin * 10));
+  confidence = clamp(100 - (grammarIssues * 5));
+  const overall = clamp((energy + conciseness + confidence) / 3);
+
+  document.getElementById("oral-score").textContent = `Score: ${overall.toFixed(0)}%`;
+  document.getElementById("oral-score").style.background = 
+    overall > 80 ? '#00c851' : overall > 60 ? '#ffbb33' : '#ff4444';
+
+  const updateMetric = (idVal, idBar, val) => {
+    document.getElementById(idVal).textContent = val.toFixed(0) + "%";
+    document.getElementById(idBar).style.width = val + "%";
+    let color = val < 60 ? "#ff4d4d" : val < 80 ? "#ffcc00" : "#00c851";
+    document.getElementById(idBar).style.background = color;
+  };
+
+  updateMetric("energyVal", "energyBar", energy);
+  updateMetric("concisenessVal", "concisenessBar", conciseness);
+  updateMetric("confidenceVal", "confidenceBar", confidence);
+
   const ctx = document.getElementById('speechChart').getContext('2d');
   new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: ['Pace', 'Fillers', 'Grammar'],
+      labels: ['Pace (WPM)', 'Fillers', 'Grammar Issues'],
       datasets: [{
         label: 'Performance Metrics',
-        data: [
-          {{ rec.pacing_data.wpm|default:0 }},
-          {{ rec.filler_data.total_fillers|default:0 }},
-          {{ rec.grammar_data|length|default:0 }}
-        ],
-        borderWidth: 1,
+        data: [wpm, {{ rec.filler_data.total_fillers|default:0 }}, grammarIssues],
         backgroundColor: ['#0072ff','#286be6','#ff5555']
       }]
     },
     options: {
       plugins: { legend: { display: false }},
       scales: {
-        y: { beginAtZero: true, ticks: { color: '#fff' }},
-        x: { ticks: { color: '#fff' }}
+        y: { beginAtZero: true, ticks:{color:'#fff'} },
+        x: { ticks:{color:'#fff'} }
       }
     }
   });
 });
+
+function toggleModal(metric) {
+  if (modalOpen) return;
+  modalOpen = true;
+
+  const modal = document.getElementById("metricModal");
+  const title = document.getElementById("metricTitle");
+  const desc = document.getElementById("metricDescription");
+  const tips = document.getElementById("improveList");
+  tips.innerHTML = "";
+
+  let score = 0;
+
+  if (metric === "energy") {
+    score = energy;
+    title.textContent = `⚡ Energy (${score.toFixed(0)}%)`;
+    desc.textContent = "Energy reflects how lively and expressive your voice sounds.";
+    tips.innerHTML = `
+      <li>🎤 Vary your pitch and avoid monotone delivery.</li>
+      <li>😊 Smile while speaking to add natural enthusiasm.</li>
+      <li>💨 Use short pauses for emphasis.</li>
+      <li>🎶 Practice reading aloud to build energy consistency.</li>`;
+  } else if (metric === "conciseness") {
+    score = conciseness;
+    title.textContent = `✂️ Conciseness (${score.toFixed(0)}%)`;
+    desc.textContent = "Conciseness measures clarity and efficiency in speech.";
+    tips.innerHTML = `
+      <li>🧠 Think before speaking — organize key ideas first.</li>
+      <li>❌ Cut filler words like "um", "like", and "you know".</li>
+      <li>📏 Aim for short, impactful sentences.</li>
+      <li>🗒️ Practice summarizing topics in 2-3 sentences.</li>`;
+  } else {
+    score = confidence;
+    title.textContent = `🌟 Confidence (${score.toFixed(0)}%)`;
+    desc.textContent = "Confidence shows calmness, clarity, and assertiveness.";
+    tips.innerHTML = `
+      <li>🧍 Maintain upright posture while speaking.</li>
+      <li>🗣️ Speak slightly slower — it conveys control.</li>
+      <li>👁️ Keep eye contact when possible.</li>
+      <li>🎧 Record yourself and note points of hesitation.</li>`;
+  }
+
+  modal.classList.add("show");
+}
+
+function closeModal() {
+  modalOpen = false;
+  const modal = document.getElementById("metricModal");
+  modal.classList.remove("show");
+}
+
+function generatePDF() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF("p", "pt", "a4");
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 40;
+  let y = margin;
+
+  const chartCanvas = document.getElementById("speechChart");
+  const chartImg = chartCanvas ? chartCanvas.toDataURL("image/png", 1.0) : "";
+
+  const primary = "#0072ff";
+  const textDark = "#222";
+  const textGray = "#555";
+
+  const addY = (val = 20) => (y += val);
+
+  // HEADER
+  doc.setFillColor(0, 114, 255);
+  doc.rect(0, 0, pageWidth, 70, "F");
+  doc.setTextColor("#ffffff");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(20);
+  doc.text("🎤 AI Speaking Performance Report", margin, 45);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+  doc.text(`Recording: {{ rec.title }}`, margin, 65);
+  doc.text(`Date: {{ rec.created_at|date:"Y-m-d H:i" }}`, pageWidth - 180, 65);
+
+  y = 100;
+
+  // Performance Summary
+  doc.setTextColor(primary);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.text("📈 Performance Summary", margin, y);
+  addY(15);
+
+  const scores = [
+    ["⚡ Energy", energy],
+    ["✂️ Conciseness", conciseness],
+    ["🌟 Confidence", confidence],
+  ];
+  const overall = Math.round((energy + conciseness + confidence) / 3);
+
+  doc.setFontSize(12);
+  doc.setTextColor(textDark);
+  scores.forEach(([label, val], idx) => {
+    const barY = y + idx * 30;
+    const barWidth = (pageWidth - 220) * (val / 100);
+    const color = val < 60 ? [255, 77, 77] : val < 80 ? [255, 204, 0] : [0, 200, 81];
+
+    doc.text(`${label}: ${val.toFixed(0)}%`, margin, barY + 10);
+    doc.setFillColor(230);
+    doc.roundedRect(margin + 100, barY, pageWidth - 180, 8, 3, 3, "F");
+    doc.setFillColor(...color);
+    doc.roundedRect(margin + 100, barY, barWidth, 8, 3, 3, "F");
+  });
+
+  addY(100);
+
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(primary);
+  doc.setFontSize(13);
+  doc.text(`Overall Score: ${overall}%`, margin, y);
+  addY(30);
+
+  if (chartImg) {
+    doc.addImage(chartImg, "PNG", margin, y, pageWidth - margin * 2, 150);
+    addY(170);
+  }
+
+  doc.save("AI_Speaking_Report.pdf");
+}
 </script>
 {% endblock %}
