@@ -70,7 +70,7 @@ LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'dashboard'
 LOGOUT_REDIRECT_URL = 'login'
 # settings.py
-ANTHROPIC_API_KEY = "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"  # Get from https://console.anthropic.com/
+ANTHROPIC_API_KEY = ""  # Get from https://console.anthropic.com/
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 SESSION_COOKIE_AGE = 60 * 60 * 24 * 7  # 7 days
 
