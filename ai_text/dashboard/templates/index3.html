@@ -28,50 +28,6 @@
     <button type="submit" class="primary-btn" style="margin-top:18px;">Convert Audio</button>
   </form>
 
-  <!-- {% if transcript %}
-  <div class="output-card">
-    <p>{{ transcript }}</p>
-    {% if pdf_url %}
-    <a href="{{ pdf_url }}" target="_blank" class="btn-success">Download PDF</a>
-    {% endif %}
-  </div>
-
-  {% if filler_analysis.total_fillers %}
-  <div class="result-card">
-    <div class="section-title">🗣️ Filler Word Analysis</div>
-    <p><strong>Total:</strong> {{ filler_analysis.total_fillers }}</p>
-    <p><strong>Per Minute:</strong> {{ filler_analysis.fillers_per_minute }}</p>
-    {% for word, count in filler_analysis.filler_frequency.items %}
-      <span class="filler-tag">{{ word }} × {{ count }}</span>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  {% if pacing_analysis.wpm %}
-  <div class="result-card">
-    <div class="section-title">⏱️ Speaking Pace</div>
-    <p><strong>WPM:</strong> {{ pacing_analysis.wpm }}</p>
-    <p>{{ pacing_analysis.pace_feedback }}</p>
-  </div>
-  {% endif %}
-
-  {% if grammar_results %}
-  <div class="result-card">
-    <div class="section-title">📝 Grammar & Clarity Suggestions</div>
-    <div class="prose leading-relaxed">
-      {% if grammar_inline %}
-        <p>{{ grammar_inline|safe }}</p>
-      {% else %}
-        <p class="text-gray-500">No grammar improvements detected.</p>
-      {% endif %}
-    </div>
-    <p class="text-sm text-gray-500 mt-3">
-      <span style="color:#d93025;">Red = Original mistake</span>,
-      <span style="color:#1a8917;">Green = Correction</span>
-    </p>
-  </div>
-  {% endif %}
-  {% endif %} -->
 </div>
 
 <!-- VIDEO TAB -->
@@ -89,14 +45,6 @@
     <button type="submit" class="primary-btn" style="margin-top:18px;">Convert Video</button>
   </form>
 
-  <!-- {% if video_transcript or transcript %}
-  <div class="output-card">
-    <p>{{ video_transcript|default:transcript }}</p>
-    {% if pdf_url %}
-      <a href="{{ pdf_url }}" target="_blank" class="btn-success">Download PDF</a>
-    {% endif %}
-  </div>
-  {% endif %} -->
 </div>
 </div>
 
@@ -184,6 +132,7 @@ document.addEventListener("DOMContentLoaded", function() {
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 4000);
   });
+  
 </script>
 {% endif %}
 

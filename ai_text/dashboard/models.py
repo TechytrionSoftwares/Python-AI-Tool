@@ -22,6 +22,9 @@ class Recording(models.Model):
     # tone_pause_data = models.JSONField(default=dict, blank=True)
     duration = models.FloatField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
+    pacing_segments = models.JSONField(blank=True, null=True)
+    hedging_data = models.JSONField(blank=True, null=True)
+    conciseness_data = models.JSONField(blank=True, null=True)
     # grammar_inline = models.TextField(null=True, blank=True)
 
     def __str__(self):

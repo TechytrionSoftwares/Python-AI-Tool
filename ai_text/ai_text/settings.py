@@ -70,8 +70,7 @@ MIDDLEWARE = [
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'dashboard'
 LOGOUT_REDIRECT_URL = 'login'
-# settings.py
-# ANTHROPIC_API_KEY = "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"  # Get from https://console.anthropic.com/
+ANTHROPIC_API_KEY = ""
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 SESSION_COOKIE_AGE = 60 * 60 * 24 * 7  # 7 days
 
@@ -99,12 +98,22 @@ WSGI_APPLICATION = 'ai_text.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': 'ep-ai',
+#         'USER': 'postgres',
+#         'PASSWORD': 'root',
+#         'HOST': 'localhost',
+#         'PORT': '5432',
+#     }
+# }
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'ep-ai',
-        'USER': 'postgres',
-        'PASSWORD': 'root',
+        'NAME': 'ai_db',
+        'USER': 'user_mike',
+        'PASSWORD': 'admin@123_ai',
         'HOST': 'localhost',
         'PORT': '5432',
     }
@@ -115,8 +124,6 @@ DATABASES = {
 #         'NAME': BASE_DIR / 'db.sqlite3',
 #     }
 # }
-
-
 
 
 INSTALLED_APPS += ['storages']
@@ -139,8 +146,8 @@ DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
 MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/' 
 
 
-MEDIA_ROOT = BASE_DIR / "media"
-MEDIA_URL = "/media/"
+# MEDIA_ROOT = BASE_DIR / "media"
+# MEDIA_URL = "/media/"
 
 DATA_UPLOAD_MAX_MEMORY_SIZE = 104857600  # 100 MB
 FILE_UPLOAD_MAX_MEMORY_SIZE = 104857600  # 100 MB
