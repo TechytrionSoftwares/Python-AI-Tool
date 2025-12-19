@@ -1,42 +1,54 @@
-{% extends 'base.html' %}
-{% block title %}Recording Details{% endblock %}
+{% extends 'base.html' %} {% block title %}Recording Details{% endblock %} {% block content %} <style>
+  body {
+    background: #0b0e11;
+    color: #fff;
+    font-family: "Inter", sans-serif;
+  }
 
-{% block content %}
-<style>
-body {
-  background: #0b0e11;
-  color: #fff;
-  font-family: "Inter", sans-serif;
-}
-.container {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  padding: 20px 60px;
-  gap: 25px;
-  padding-top:0px;
-}
-.metrics, .transcript {
-  background: rgba(255,255,255,0.05);
-  border-radius: 16px;
-  box-shadow: 0 0 15px rgba(0,0,0,0.4);
-  padding: 25px;
-}
-.metrics { flex: 1 1 350px; }
-.transcript { flex: 2 1 600px; }
+  .container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    padding: 20px 60px;
+    gap: 25px;
+    padding-top: 0px;
+  }
 
-.header-info {
-  text-align: left;
-  margin-bottom: 30px;
-  padding-left: 60px;
-}
-.header-info h1 { color: #286be6; font-size: 24px; margin-bottom:0px; }
-.header-info small {
+  .metrics,
+  .transcript {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
+    padding: 25px;
+  }
+
+  .metrics {
+    flex: 3 1 350px;
+  }
+
+  .transcript {
+    flex: 2 1 600px;
+  }
+
+  .header-info {
+    text-align: left;
+    margin-bottom: 30px;
+    padding-left: 60px;
+  }
+
+  .header-info h1 {
+    color: #286be6;
+    font-size: 24px;
+    margin-bottom: 0px;
+  }
+
+  .header-info small {
     color: #aaa;
     font-style: italic;
     padding-left: 38px;
-}
-.oral-score {
+  }
+
+  .oral-score {
     background: #990000;
     color: white;
     padding: 10px 25px;
@@ -49,429 +61,848 @@ body {
     top: 80px;
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
-}
+  }
 
-.workon-box {
-  background: rgba(255,255,255,0.08);
-  border-radius: 12px;
-  margin-bottom: 12px;
-  padding: 12px 15px;
-  transition: background 0.2s;
-  cursor: pointer;
-}
-.workon-box:hover {
-  background: rgba(255,255,255,0.12);
-}
-.progress-bar {
-  width: 100%;
-  height: 8px;
-  background: rgba(255,255,255,0.1);
-  border-radius: 6px;
-  margin-top: 8px;
-}
-.progress {
-  height: 100%;
-  border-radius: 6px;
-  background: linear-gradient(90deg, #00c6ff, #0072ff);
-}
+  .workon-box {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    margin-bottom: 12px;
+    padding: 12px 15px;
+    transition: background 0.2s;
+    cursor: pointer;
+  }
 
-.transcript h3 { color: #ff5555; margin-top: 20px; }
-.transcript p { color: #ddd; line-height: 1.6; }
+  .workon-box:hover {
+    background: rgba(255, 255, 255, 0.12);
+  }
 
-.chart-box {
-  background: rgba(255,255,255,0.05);
-  border-radius: 12px;
-  padding: 15px;
-  margin-top: 20px;
-}
+  .progress-bar {
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    margin-top: 8px;
+  }
 
-/* Grammar Analysis Styles */
-.grammar-section {
-    border-radius: 16px;
-    padding: 25px;
-    padding-left: 0px;
-    padding-right: 0;
-    margin: 0;
-    box-shadow: 0 0 15px rgba(0,0,0,0.4);
-}
+  .progress {
+    height: 100%;
+    border-radius: 6px;
+    background: linear-gradient(90deg, #00c6ff, #0072ff);
+  }
 
-.grammar-section h3 {
+  .transcript h3 {
+    color: #ff5555;
+    margin-top: 20px;
+  }
+
+  .transcript p {
+    color: #ddd;
+    line-height: 1.6;
+  }
+
+  .chart-box {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 15px;
+    margin-top: 20px;
+  }
+
+  /* Grammar Analysis Styles */
+ 
+
+  .grammar-section h3 {
     color: #00c6ff;
     margin-bottom: 20px;
     font-size: 20px;
-}
+  }
 
-.stats {
-    background: rgba(255,255,255,0.08);
+  .stats {
+    background: rgba(255, 255, 255, 0.08);
     padding: 15px;
     border-radius: 8px;
     margin-bottom: 20px;
-}
+  }
 
-.stats p {
+  .stats p {
     margin: 5px 0;
     color: #ddd;
-}
+  }
 
-.corrected-preview {
+  .corrected-preview {
     margin-bottom: 25px;
-}
+  }
 
-.corrected-preview h4 {
+  .corrected-preview h4 {
     color: #1a8917;
     margin-bottom: 10px;
-}
+  }
 
-.highlighted-text {
-    background: rgba(255,255,255,0.08);
+  .highlighted-text {
+    background: rgba(255, 255, 255, 0.08);
     padding: 20px;
     border-radius: 10px;
     line-height: 1.9;
     font-size: 16px;
     color: #fff;
     border-left: 4px solid #1a8917;
-}
+  }
 
-.highlighted-text del {
+  .highlighted-text del {
     background: rgba(217, 48, 37, 0.2);
     padding: 2px 4px;
     border-radius: 3px;
-}
+  }
 
-.highlighted-text ins {
+  .highlighted-text ins {
     background: rgba(26, 137, 23, 0.2);
     padding: 2px 4px;
     border-radius: 3px;
     text-decoration: none;
-}
+  }
 
-.error-details {
+  .error-details {
     margin-top: 20px;
-}
+  }
 
-.error-details h4 {
+  .error-details h4 {
     color: #ff5555;
     margin-bottom: 15px;
-}
+  }
 
-.error-details ul {
+  .error-details ul {
     list-style: none;
     padding: 0;
-}
+  }
 
-.error-details li {
-    background: rgba(255,255,255,0.08);
+  .error-details li {
+    background: rgba(255, 255, 255, 0.08);
     padding: 15px;
     margin: 12px 0;
     border-radius: 8px;
     border-left: 3px solid #4285f4;
     line-height: 1.6;
-}
+  }
 
-.error-details li strong {
+  .error-details li strong {
     color: #00c6ff;
     text-transform: uppercase;
     font-size: 12px;
     letter-spacing: 0.5px;
-}
+  }
 
-.filler-tag {
+  .filler-tag {
     display: inline-block;
-    background: rgba(255,85,85,0.2);
+    background: rgba(255, 85, 85, 0.2);
     color: #ff5555;
     padding: 5px 12px;
     border-radius: 15px;
     margin: 5px;
     font-size: 14px;
-}
+  }
 
-/* Modal styles */
-#metricModal {
-  display: none;
-  position: fixed;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  background: rgba(0,0,0,0.7);
-  justify-content: center;
-  align-items: center;
-  z-index: 9999;
-  opacity: 0;
-  transition: opacity 0.4s ease;
-}
-#metricModal.show {
-  display: flex;
-  opacity: 1;
-}
-.modal-content {
-  background: #11161c;
-  padding: 25px;
-  border-radius: 14px;
-  width: 420px;
-  text-align: center;
-  color: #fff;
-  box-shadow: 0 0 20px rgba(0,0,0,0.4);
-  transform: scale(0.9);
-  animation: zoomIn 0.4s forwards;
-}
-@keyframes zoomIn { to { transform: scale(1); } }
-.modal-content h3 { color: #00c6ff; margin-bottom: 10px; }
-.modal-content p { color: #ccc; line-height: 1.6; }
-.improve-list {
-  text-align: left;
-  color: #ddd;
-  margin-top: 10px;
-  font-size: 0.95rem;
-}
-.improve-list li { margin: 6px 0; }
-.close-btn {
-  background: #ff4444;
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 6px 14px;
-  margin-top: 15px;
-  cursor: pointer;
-  font-weight: bold;
-}
-.close-btn:hover { background: #cc0000; }
+  /* Modal styles */
+  #metricModal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
 
-/* PDF Button */
-.download-btn {
-  margin-top: 25px;
-  display: inline-block;
-  background: #0072ff;
-  padding: 10px 20px;
-  border-radius: 8px;
-  color: white;
-  font-weight: bold;
-  text-decoration: none;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-.download-btn:hover { background: #005fd1; }
+  #metricModal.show {
+    display: flex;
+    opacity: 1;
+  }
 
-.speaking-tips-section {
-    background: rgba(255,255,255,0.05);
+  .modal-content {
+    background: #11161c;
+    padding: 25px;
+    border-radius: 14px;
+    width: 420px;
+    text-align: center;
+    color: #fff;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.4);
+    transform: scale(0.9);
+    animation: zoomIn 0.4s forwards;
+  }
+
+  @keyframes zoomIn {
+    to {
+      transform: scale(1);
+    }
+  }
+
+  .modal-content h3 {
+    color: #00c6ff;
+    margin-bottom: 10px;
+  }
+
+  .modal-content p {
+    color: #ccc;
+    line-height: 1.6;
+  }
+
+  .improve-list {
+    text-align: left;
+    color: #ddd;
+    margin-top: 10px;
+    font-size: 0.95rem;
+  }
+
+  .improve-list li {
+    margin: 6px 0;
+  }
+
+  .close-btn {
+    background: #ff4444;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 6px 14px;
+    margin-top: 15px;
+    cursor: pointer;
+    font-weight: bold;
+  }
+
+  .close-btn:hover {
+    background: #cc0000;
+  }
+
+  /* PDF Button */
+  .download-btn {
+    margin-top: 25px;
+    display: inline-block;
+    background: #0072ff;
+    padding: 10px 20px;
+    border-radius: 8px;
+    color: white;
+    font-weight: bold;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .download-btn:hover {
+    background: #005fd1;
+  }
+
+  .speaking-tips-section {
+    background: rgba(255, 255, 255, 0.05);
     border-radius: 16px;
     padding: 25px;
     margin: 20px 60px;
-    box-shadow: 0 0 15px rgba(0,0,0,0.4);
-}
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
+  }
 
-.speaking-tips-section h3 {
+  .speaking-tips-section h3 {
     color: #ffbb33;
     margin-bottom: 20px;
     font-size: 20px;
-}
+  }
 
-.tip-card {
-    background: rgba(255,255,255,0.08);
+  .tip-card {
+    background: rgba(255, 255, 255, 0.08);
     border-radius: 10px;
     padding: 20px;
     margin: 15px 0;
     border-left: 4px solid;
     transition: transform 0.2s, box-shadow 0.2s;
-}
+  }
 
-.tip-card:hover {
+  .tip-card:hover {
     transform: translateX(5px);
-    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-}
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+  }
 
-.tip-card.severity-high {
+  .tip-card.severity-high {
     border-left-color: #ff4444;
     background: rgba(255, 68, 68, 0.1);
-}
+  }
 
-.tip-card.severity-medium {
+  .tip-card.severity-medium {
     border-left-color: #ffbb33;
     background: rgba(255, 187, 51, 0.1);
-}
+  }
 
-.tip-card.severity-low {
+  .tip-card.severity-low {
     border-left-color: #00c851;
     background: rgba(0, 200, 81, 0.1);
-}
+  }
 
-.tip-card.severity-none {
+  .tip-card.severity-none {
     border-left-color: #00c6ff;
     background: rgba(0, 198, 255, 0.1);
-}
+  }
 
-.tip-category {
+  .tip-category {
     color: #00c6ff;
     font-weight: bold;
     font-size: 14px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-bottom: 8px;
-}
+  }
 
-.tip-issue {
+  .tip-issue {
     color: #fff;
     font-size: 16px;
     font-weight: 600;
     margin-bottom: 10px;
-}
+  }
 
-.tip-suggestion {
+  .tip-suggestion {
     color: #ddd;
     line-height: 1.6;
     font-size: 15px;
-}
+  }
 
-.tip-icon {
+  .tip-icon {
     font-size: 24px;
     margin-right: 10px;
     vertical-align: middle;
+  }
+  .workon-tabs {
+  margin-top: 20px;
 }
-</style>
 
+.workon-item {
+  background: rgba(255,255,255,0.08);
+  padding: 20px 15px;
+  cursor: pointer;
+  border-radius: 10px;
+  margin: 8px 0;
+  font-size: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.workon-item:hover {
+  background: rgba(255,255,255,0.15);
+}
+
+.workon-content {
+  display: none;
+  background: rgba(255,255,255,0.05);
+  padding: 12px 15px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  line-height: 1.6;
+}
+
+.workon-content.show {
+  display: block;
+  border: 1px solid #990000;
+  border-top: 0;
+  background: none;
+  border-top-right-radius: 0;
+  border-top-left-radius: 0;
+}
+.workon-item.active {
+    border: 1px solid #990000;
+    border-bottom: 0;
+    background: none;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    margin-bottom: 0;
+}
+.arrow {
+  transform: rotate(0deg);
+  transition: 0.3s;
+}
+.workon-item.active .arrow {
+  transform: rotate(180deg);
+}
+#segmentedTranscript {
+  margin-top: 15px;
+  background: #000;
+    padding: 20px;
+    height: 300px;
+    overflow-y: scroll;
+}
+
+.segment {
+  background: rgba(255,255,255,0.08);
+  padding: 12px 16px;
+  border-radius: 12px;
+  margin: 10px 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.segment:hover {
+  background: rgba(0,198,255,0.2);
+}
+
+
+/* .play-btn {
+  font-size: 18px;
+  color: #00c6ff;
+  cursor: pointer;
+  flex-shrink: 0;
+  user-select: none;
+} */
+
+.timestamp {
+  font-size: 13px;
+  color: #00c6ff;
+  font-weight: bold;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.segment-text {
+  color: #fff;
+  line-height: 1.6;
+  flex-grow: 1;
+}
+
+#segmentedTranscript .segment {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 8px;
+}
+
+#segmentedTranscript .play-btn {
+  margin-right: 10px;
+  padding:0;
+  cursor: pointer;
+  background: #ff5555;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  font-size: 16px;
+}
+
+#mainAudio{
+  width: 100%;
+  margin-top: 20px;
+  margin-bottom:20px;
+}
+
+.filler-word {
+    background: rgba(255, 193, 7, 0.45);
+    padding: 2px 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    border-bottom: 2px dotted #ff9800;
+    font-weight: 600;
+    position: relative;
+}
+
+.filler-word:hover::after {
+    content: "Filler word: " attr(data-word);
+    position: absolute;
+    top: -32px;
+    left: 0;
+    background: #1e1e1e;
+    color: #fff;
+    padding: 6px 10px;
+    font-size: 12px;
+    border-radius: 6px;
+    white-space: nowrap;
+    z-index: 10;
+    box-shadow: 0px 0px 6px rgba(0,0,0,0.4);
+}
+
+.pause-segment {
+    border-left: 4px solid #ff9800;
+    background: rgba(255, 152, 0, 0.12);
+}
+
+.pause-segment::after {
+    content: "⏸ Pause";
+    font-size: 12px;
+    color: #ff9800;
+    margin-left: 8px;
+    font-weight: bold;
+}
+.segment.active {
+  background: rgba(88, 101, 242, 0.35) !important;
+  border-left: 4px solid #5865f2;
+}
+
+.hedging-word {
+    background: rgba(255, 87, 34, 0.45);
+    padding: 2px 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    border-bottom: 2px dotted #ff5722;
+    font-weight: 600;
+}
+.concise-repeat {
+  background: rgba(0, 200, 81, 0.35);
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.transcript-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+  margin-left: 60px;
+}
+
+.tab-btn-rec {
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 0px;
+  cursor: pointer;
+  font-weight: 600;
+  width: 230px;
+}
+
+.tab-btn-rec.active {
+  background: #99000033;
+  border-radius: 0;
+  border-bottom: 6px solid #990000;
+}
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+.analytics-card {
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.analytics-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+}
+
+</style>
 <div class="header-info">
   <h1>🎧 {{ rec.title }}</h1>
-  <div id="oral-score" class="oral-score">Calculating score...</div>
+  <!-- <div id="oral-score" class="oral-score">Calculating score...</div> -->
   <small>Date: {{ rec.created_at|date:"Y-m-d H:i" }} | Duration: {{ rec.duration|floatformat:2 }} sec</small>
 </div>
-
-<div class="container">
+<div class="transcript-tabs">
+  <button class="tab-btn-rec active" data-tab="tab-transcript">📝 Transcript</button>
+  <button class="tab-btn-rec" data-tab="tab-grammar">🧠 Grammar</button>
+  <button class="tab-btn-rec" data-tab="tab-analytics">📊 Analytics</button>
+  <button class="tab-btn-rec" data-tab="tab-summary">📊 Summary</button>
+</div>
+<div class="tab-content active" id="tab-transcript">
+  <div class="container">
   <!-- LEFT ANALYSIS PANEL -->
   <div class="metrics">
     <h2 style="margin-bottom:20px;">🎯 What to Work On</h2>
-    <div class="workon-box" onclick="toggleModal('energy')">
-      ⚡ Energy <span style="float:right;" id="energyVal">--%</span>
-      <div class="progress-bar"><div class="progress" id="energyBar"></div></div>
-    </div>
+    <div class="workon-box" style="cursor:default;">
+  <strong>🗣️ Talk Time</strong>
+  <small style="float:right;">
+    {{ talk_time.talk_time_percent }}%
+  </small>
 
-    <div class="workon-box" onclick="toggleModal('conciseness')">
-      ✂️ Conciseness <span style="float:right;" id="concisenessVal">--%</span>
-      <div class="progress-bar"><div class="progress" id="concisenessBar"></div></div>
+  <div class="progress-bar">
+    <div class="progress"
+         style="width: {{ talk_time.talk_time_percent }}%;
+                background: linear-gradient(90deg,#00c6ff,#0072ff);">
     </div>
-
-    <div class="workon-box" onclick="toggleModal('confidence')">
-      🌟 Confidence <span style="float:right;" id="confidenceVal">--%</span>
-      <div class="progress-bar"><div class="progress" id="confidenceBar"></div></div>
-    </div>
-
-    <canvas id="speechChart" width="350" height="200" style="margin-top:20px;"></canvas>
   </div>
 
-  <!-- RIGHT TRANSCRIPT PANEL -->
-  <div class="transcript">
-    <h3>📝 Original Transcript</h3>
-    <p style="white-space:pre-line;">{{ rec.transcript }}</p>
-    {% if grammar_inline %}
-<div class="grammar-section">
-    <h3>📝 Grammar Analysis {% if grammar_data.issues %}({{ grammar_data.issues }} issue{{ grammar_data.issues|pluralize }} found){% endif %}</h3>
-    
-    {% if grammar_data.issues > 0 %}
-    <div class="stats">
-        <p>✅ <strong></strong>Context-aware grammar corrections</p>
-        <p>🎯 <strong>Issues Found:</strong> {{ grammar_data.issues }}</p>
-    </div>
-    {% endif %}
-    
-    <!-- Inline Corrected Text with Highlights -->
-    <div class="corrected-preview">
-        <h4>💡 Corrected Version (with highlights):</h4>
-        <div class="highlighted-text">
-            {{ grammar_inline|safe }}
-        </div>
-        <small style="color:#aaa; display:block; margin-top:10px;">
-            <del style='color:#d93025;'>Red strikethrough</del> = Error | 
-            <ins style='color:#1a8917;font-weight:bold;'>Green text</ins> = Correction
-        </small>
-    </div>
-    
-    <!-- Detailed Error List -->
-    {% if grammar_results %}
-    <div class="error-details">
-        <h4>🔍 Detailed Corrections:</h4>
-        <ul>
-        {% for error in grammar_results %}
-            <li>
-                <strong>{{ error.type|default:"Grammar"|title }}:</strong><br>
-                <span style="font-size:15px;">
-                    "<span style="color:#d93025;">{{ error.original }}</span>" 
-                    → 
-                    "<span style="color:#1a8917;">{{ error.correction }}</span>"
-                </span>
-                <br>
-                <small style="color:#aaa; margin-top:5px; display:block;">
-                    {% if error.explanation %}
-                        💬 {{ error.explanation }}
-                    {% elif error.issue %}
-                        💬 {{ error.issue }}
-                    {% endif %}
-                </small>
-            </li>
-        {% endfor %}
-        </ul>
-    </div>
-    {% endif %}
+  <small style="display:block;margin-top:8px;color:#aaa;">
+    Speaking: {{ talk_time.speaking_seconds }}s ·
+    Silence: {{ talk_time.silence_seconds }}s
+  </small>
 </div>
-{% else %}
-<div class="grammar-section">
-    <h3>📝 Grammar Analysis</h3>
-    <div class="stats">
-        <p style="color:#1a8917;">✅ No grammar issues detected! Excellent work!</p>
-    </div>
-</div>
-{% endif %}
-  </div>
+    <!-- Work On Tabs -->
+  <div class="workon-tabs">
+    <div class="workon-item" onclick="toggleTab(this)">
+  <span>Filler Words</span>
+  <span class="arrow">▼</span>
 </div>
 
-<!-- GRAMMAR ANALYSIS SECTION (Full Width) -->
+<div class="workon-content">
+  {% if filler_frequency %}
+    <p class="success">
+      ✅ You used {{ fillers_per_minute }} filler words per minute
+    </p>
 
-<!-- Speaking Improvement Tips Section -->
-{% if speaking_tips %}
-<div class="speaking-tips-section">
-    <h3>💡 Personalized Speaking Improvement Tips</h3>
-    
-    {% for tip in speaking_tips %}
-    <div class="tip-card severity-{{ tip.severity }}">
-        <div class="tip-category">
-            {% if tip.category == "Filler Words" %}
-                <span class="tip-icon">🗣️</span>
-            {% elif tip.category == "Speaking Pace" %}
-                <span class="tip-icon">⚡</span>
-            {% elif tip.category == "Grammar" %}
-                <span class="tip-icon">📝</span>
-            {% else %}
-                <span class="tip-icon">✨</span>
-            {% endif %}
-            {{ tip.category }}
+    <p><strong>Most used words</strong></p>
+
+    {% for word, count in filler_frequency.items %}
+      <div style="margin:6px 0;">
+        <span style="width:80px; display:inline-block;">{{ word }}</span>
+
+        <div style="display:inline-block; width:220px; background:#333; border-radius:6px;">
+          <div style="
+            width: {{ count|add:'0' }}0%;
+            background:#6c63ff;
+            padding:4px;
+            border-radius:6px;
+            color:white;
+            font-size:12px;">
+            {{ count }}
+          </div>
         </div>
-        
-        <div class="tip-issue">
-            {{ tip.issue }}
-        </div>
-        
-        <div class="tip-suggestion">
-            💬 {{ tip.suggestion }}
-        </div>
-    </div>
+      </div>
     {% endfor %}
+  {% else %}
+    <p>✅ No filler words detected.</p>
+  {% endif %}
 </div>
-{% endif %}
 
-<!-- Keep your existing media player section below this -->
-<!-- Media Player -->
-{% if rec.audio_url %}
-  <div class="player-box" style="margin:20px 60px; text-align: center; background:rgba(255,255,255,0.05); padding:20px; border-radius:16px;">
-    <h3 style="color:#00c6ff; margin-bottom:15px;">🎥 Recording Playback</h3>
-    {% if ".mp4" in rec.audio_url|lower or ".webm" in rec.audio_url|lower or ".mov" in rec.audio_url|lower %}
-      <video controls width="700" style="border-radius:8px;">
-        <source src="{{ rec.audio_url }}" type="video/mp4">
-      </video>
-    {% else %}
-      <audio controls style="width:100%; max-width:700px;">
-        <source src="{{ rec.audio_url }}" type="audio/mpeg">
-      </audio>
-    {% endif %}
+    <div class="workon-item" onclick="toggleTab(this)">
+      <span>Pace</span>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="workon-content">
+
+  {% for seg in pace_segments %}
+    <div class="workon-box"
+     onclick="playSegment({{ seg.start_s }}, {{ seg.end_s }}); highlightSegment({{ forloop.counter0 }})">
+      <strong>{{ seg.label }}</strong>
+      <small style="float:right;">{{ seg.start }}</small>
+
+    </div>
+  {% endfor %}
+
+</div>
+    <div class="workon-item" onclick="toggleTab(this)">
+      <span>Conciseness</span>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="workon-content">
+  {% if conciseness_data.repetition_count > 0 %}
+    <p>⚠ {{ conciseness_data.repetition_count }} moments where you could be more concise</p>
+
+    <p><strong>Repeated ideas</strong></p>
+    {% for item in conciseness_data.repetitions %}
+      <div style="margin:6px 0;">
+        "{{ item.phrase }}" × {{ item.count }}
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="success">✅ {{ conciseness_data.feedback }}</p>
+  {% endif %}
+</div>
+    <div class="workon-item" onclick="toggleTab(this)">
+      <span>Hedging Words</span>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="workon-content">
+  {% if rec.hedging_data and rec.hedging_data.hedge_frequency %}
+    <p>
+      ⚠ You used {{ rec.hedging_data.hedges_per_minute }}
+      hedging words per minute
+    </p>
+
+    <p><strong>Most used hedging words</strong></p>
+
+    {% for word, count in rec.hedging_data.hedge_frequency.items %}
+      <div style="margin:6px 0;">
+        <span style="width:120px; display:inline-block;">{{ word }}</span>
+
+        <div style="display:inline-block; width:220px; background:#333; border-radius:6px;">
+          <div style="
+            width: {{ count }}0%;
+            background:#ff9800;
+            padding:4px;
+            border-radius:6px;
+            color:white;
+            font-size:12px;">
+            {{ count }}
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p>✅ No hedging words detected.</p>
+  {% endif %}
+</div>
+ </div>
+   </div>
+ <!-- RIGHT TRANSCRIPT PANEL -->
+  <div class="transcript">
+
+
+
+
+<audio id="mainAudio" controls>
+    <source src="{{ rec.audio_url }}" type="audio/mpeg">
+</audio>
+<!-- <div class="chart-box">
+  <h3>⏱ Hesitation Timeline</h3>
+  <canvas id="pauseChart"></canvas>
+</div> -->
+
+<div id="segmentedTranscript">
+  {% for seg in segments %}
+  <div class="segment"
+       data-index="{{ forloop.counter0 }}"
+       data-start="{{ seg.start_s }}"
+       data-end="{{ seg.end_s }}"
+       onclick="playSegment({{ seg.start_s }}, {{ seg.end_s }})">
+
+      <span class="timestamp">{{ seg.start }} - {{ seg.end }}</span>
+
+      <span class="segment-text">
+        {% autoescape off %}
+          {{ seg.text }}
+        {% endautoescape %}
+      </span>
+
+      {% if seg.has_pause %}
+        <span class="pause-flag">⏸ Pause</span>
+      {% endif %}
+    </div>
+  {% endfor %}
+</div>
   </div>
-{% endif %}
+  </div>
+  </div>
 
-<!-- Modal -->
+ 
+ 
+
+<div class="tab-content" id="tab-grammar">
+  <div class="container">
+
+    <!-- LEFT: Original Transcript -->
+    <div class="metrics">
+      <h3>📝 Original Transcript</h3>
+      <p style="white-space:pre-line;margin-top:20px;">{{ rec.transcript }}</p>
+    </div>
+
+    <!-- RIGHT: Grammar Corrections -->
+    <div class="transcript">
+      {% if grammar_inline %}
+        <div class="grammar-section">
+         <h3>
+          🧠 Grammar Analysis
+          {% if grammar_data.issues %}
+            ({{ grammar_data.issues }} grammar issues)
+          {% elif grammar_data.has_correction %}
+            (Improved clarity)
+          {% endif %}
+          </h3>
+
+          <div class="corrected-preview">
+            <h4>💡 Corrected Version</h4>
+            <div class="highlighted-text">
+              {{ grammar_inline|safe }}
+            </div>
+          </div>
+          {% if conciseness_data.repetition_count > 0 %}
+            <div class="stats" style="margin-top:10px;">
+              🔁 Removed repeated sentence for clarity
+            </div>
+          {% endif %}
+
+
+          {% if grammar_results %}
+            <div class="error-details">
+              <h4>🔍 Detailed Corrections</h4>
+              <ul>
+                {% for error in grammar_results %}
+                  <li>
+                    <strong>{{ error.type|default:"Grammar"|title }}</strong><br>
+                    "{{ error.original }}" → "{{ error.correction }}"
+                    <small>{{ error.explanation }}</small>
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endif %}
+        </div>
+      {% else %}
+        <p style="color:#1a8917;">✅ No grammar issues detected</p>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+
+<div class="tab-content" id="tab-analytics">
+  <div class="container">
+
+    <div class="metrics" style="width:100%;">
+      <h2 style="margin-bottom:20px;">📊 Speaking Analytics</h2>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;">
+
+        <!-- TALK TIME -->
+        <div class="chart-box" onclick="showChart('talkTime')">
+          <h4>🗣️ Talk Time</h4>
+          <strong style="font-size:26px;">{{ talk_time.talk_time_percent }}%</strong>
+          <p style="color:#aaa;">
+            Speaking {{ talk_time.speaking_seconds }}s · Silence {{ talk_time.silence_seconds }}s
+          </p>
+        </div>
+
+        <!-- FILLER WORDS -->
+        <div class="chart-box" onclick="showChart('fillerWords')">
+          <h4>🗣️ Filler Words</h4>
+          <strong style="font-size:26px;">{{ fillers_per_minute }}</strong>
+          <p style="color:#aaa;">per minute</p>
+        </div>
+
+        <!-- PACE -->
+        <div class="chart-box" onclick="showChart('pace')">
+          <h4>⚡ Speaking Pace</h4>
+          <strong style="font-size:26px;">{{ pacing_analysis.wpm }}</strong>
+          <p style="color:#aaa;">words / minute</p>
+        </div>
+
+        <!-- CONCISENESS -->
+        <div class="chart-box" onclick="showChart('conciseness')">
+          <h4>✂ Conciseness</h4>
+          {% if conciseness_data.repetition_count > 0 %}
+            <p style="color:#ff9800;">
+              {{ conciseness_data.repetition_count }} repetitive moments
+            </p>
+          {% else %}
+            <p style="color:#00c851;">Clear & concise</p>
+          {% endif %}
+        </div>
+
+        <!-- HEDGING -->
+        <div class="chart-box" onclick="showChart('hedging')">
+          <h4>⚖ Hedging Words</h4>
+          <strong style="font-size:26px;">
+            {{ rec.hedging_data.hedges_per_minute|default:0 }}
+          </strong>
+          <p style="color:#aaa;">per minute</p>
+        </div>
+
+      </div>
+    </div>
+
+
+  </div>
+  <div class="container">
+  <div id="analyticsChartWrapper" style="margin-top:30px; display:none; width:100%;">
+  <div class="chart-box">
+    <h3 id="chartTitle">Analytics Chart</h3>
+    <canvas id="analyticsChart" height="120"></canvas>
+  </div>
+</div>
+</div>
+</div>
+
+
 <div id="metricModal">
   <div class="modal-content">
     <h3 id="metricTitle">Metric Info</h3>
@@ -480,185 +911,316 @@ body {
     <button class="close-btn" onclick="closeModal()">Close</button>
   </div>
 </div>
-
 <!-- Chart.js + jsPDF -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
 <script>
-let energy, conciseness, confidence;
-let modalOpen = false;
+  const TALK_TIME_DATA = {
+  speaking: {{ talk_time.speaking_seconds|default:0 }},
+  silence: {{ talk_time.silence_seconds|default:0 }}
+};
 
-document.addEventListener("DOMContentLoaded", function() {
-  const wpm = {{ rec.pacing_data.wpm|default:0 }};
-  const fillersPerMin = {{ rec.filler_data.fillers_per_minute|default:0 }};
-  const grammarIssues = {{ grammar_data.issues|default:0 }};
+const FILLER_DATA = {{ filler_frequency|default:"{}"|safe }};
 
-  const clamp = num => Math.max(0, Math.min(100, num));
+const PACE_DATA = {
+  wpm: {{ pacing_analysis.wpm|default:0 }}
+};
+const CONCISENESS_DATA = {
+  repetitions: {{ conciseness_data.repetition_count|default:0 }}
+};
 
-  energy = clamp((wpm / 150) * 100);
-  conciseness = clamp(100 - (fillersPerMin * 10));
-  confidence = clamp(100 - (grammarIssues * 5));
-  const overall = clamp((energy + conciseness + confidence) / 3);
+const HEDGING_DATA = {{ rec.hedging_data.hedge_frequency|default:"{}"|safe }};
+ let analyticsChart = null;
 
-  document.getElementById("oral-score").textContent = `Score: ${overall.toFixed(0)}%`;
-  document.getElementById("oral-score").style.background = 
-    overall > 80 ? '#00c851' : overall > 60 ? '#ffbb33' : '#ff4444';
+function showChart(type) {
+  const wrapper = document.getElementById("analyticsChartWrapper");
+  const ctx = document.getElementById("analyticsChart").getContext("2d");
+  const title = document.getElementById("chartTitle");
 
-  const updateMetric = (idVal, idBar, val) => {
-    document.getElementById(idVal).textContent = val.toFixed(0) + "%";
-    document.getElementById(idBar).style.width = val + "%";
-    let color = val < 60 ? "#ff4d4d" : val < 80 ? "#ffcc00" : "#00c851";
-    document.getElementById(idBar).style.background = color;
-  };
+  wrapper.style.display = "block";
 
-  updateMetric("energyVal", "energyBar", energy);
-  updateMetric("concisenessVal", "concisenessBar", conciseness);
-  updateMetric("confidenceVal", "confidenceBar", confidence);
+  if (analyticsChart) {
+    analyticsChart.destroy();
+  }
 
-  const ctx = document.getElementById('speechChart').getContext('2d');
-  new Chart(ctx, {
-    type: 'bar',
+  if (type === "talkTime") {
+    title.innerText = "🗣️ Talk Time Breakdown";
+
+    analyticsChart = new Chart(ctx, {
+      type: "doughnut",
+      data: {
+        labels: ["Speaking", "Silence"],
+        datasets: [{
+          data: [
+            TALK_TIME_DATA.speaking,
+            TALK_TIME_DATA.silence
+          ]
+        }]
+      }
+    });
+  }
+
+  if (type === "conciseness") {
+  title.innerText = "✂ Conciseness Analysis";
+
+  analyticsChart = new Chart(ctx, {
+    type: "bar",
     data: {
-      labels: ['Pace (WPM)', 'Fillers', 'Grammar Issues'],
+      labels: ["Repetitive Moments"],
       datasets: [{
-        label: 'Performance Metrics',
-        data: [wpm, {{ rec.filler_data.total_fillers|default:0 }}, grammarIssues],
-        backgroundColor: ['#0072ff','#286be6','#ff5555']
+        label: "Count",
+        data: [CONCISENESS_DATA.repetitions]
       }]
     },
     options: {
-      plugins: { legend: { display: false }},
       scales: {
-        y: { beginAtZero: true, ticks:{color:'#fff'} },
-        x: { ticks:{color:'#fff'} }
+        y: { beginAtZero: true }
       }
     }
   });
-});
+}
 
-function toggleModal(metric) {
-  if (modalOpen) return;
-  modalOpen = true;
+if (type === "hedging") {
+  title.innerText = "⚖ Hedging Words Usage";
 
-  const modal = document.getElementById("metricModal");
-  const title = document.getElementById("metricTitle");
-  const desc = document.getElementById("metricDescription");
-  const tips = document.getElementById("improveList");
-  tips.innerHTML = "";
+  analyticsChart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: Object.keys(HEDGING_DATA),
+      datasets: [{
+        label: "Count",
+        data: Object.values(HEDGING_DATA)
+      }]
+    },
+    options: {
+      scales: {
+        y: { beginAtZero: true }
+      }
+    }
+  });
+}
 
-  let score = 0;
 
-  if (metric === "energy") {
-    score = energy;
-    title.textContent = `⚡ Energy (${score.toFixed(0)}%)`;
-    desc.textContent = "Energy reflects how lively and expressive your voice sounds.";
-    tips.innerHTML = `
-      <li>🎤 Vary your pitch and avoid monotone delivery.</li>
-      <li>😊 Smile while speaking to add natural enthusiasm.</li>
-      <li>💨 Use short pauses for emphasis.</li>
-      <li>🎶 Practice reading aloud to build energy consistency.</li>`;
-  } else if (metric === "conciseness") {
-    score = conciseness;
-    title.textContent = `✂️ Conciseness (${score.toFixed(0)}%)`;
-    desc.textContent = "Conciseness measures clarity and efficiency in speech.";
-    tips.innerHTML = `
-      <li>🧠 Think before speaking — organize key ideas first.</li>
-      <li>❌ Cut filler words like "um", "like", and "you know".</li>
-      <li>📏 Aim for short, impactful sentences.</li>
-      <li>🗒️ Practice summarizing topics in 2-3 sentences.</li>`;
-  } else {
-    score = confidence;
-    title.textContent = `🌟 Confidence (${score.toFixed(0)}%)`;
-    desc.textContent = "Confidence shows calmness, clarity, and assertiveness.";
-    tips.innerHTML = `
-      <li>🧍 Maintain upright posture while speaking.</li>
-      <li>🗣️ Speak slightly slower — it conveys control.</li>
-      <li>👁️ Keep eye contact when possible.</li>
-      <li>🎧 Record yourself and note points of hesitation.</li>`;
+  if (type === "fillerWords") {
+    title.innerText = "🗣️ Filler Word Usage";
+
+    analyticsChart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: Object.keys(FILLER_DATA),
+        datasets: [{
+          label: "Count",
+          data: Object.values(FILLER_DATA)
+        }]
+      }
+    });
   }
 
-  modal.classList.add("show");
+  if (type === "pace") {
+    title.innerText = "⚡ Speaking Pace";
+
+    analyticsChart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: ["Words Per Minute"],
+        datasets: [{
+          label: "WPM",
+          data: [PACE_DATA.wpm]
+        }]
+      }
+    });
+  }
 }
 
-function closeModal() {
-  modalOpen = false;
-  const modal = document.getElementById("metricModal");
-  modal.classList.remove("show");
-}
+document.querySelectorAll(".tab-btn-rec").forEach(btn => {
+  btn.addEventListener("click", () => {
 
-function generatePDF() {
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF("p", "pt", "a4");
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 40;
-  let y = margin;
+    // Buttons
+    document.querySelectorAll(".tab-btn-rec").forEach(b =>
+      b.classList.remove("active")
+    );
+    btn.classList.add("active");
 
-  const chartCanvas = document.getElementById("speechChart");
-  const chartImg = chartCanvas ? chartCanvas.toDataURL("image/png", 1.0) : "";
+    // Contents
+    document.querySelectorAll(".tab-content").forEach(c => {
+      c.classList.remove("active");
+      c.style.display = "";   // 🔥 CRITICAL: remove inline styles
+    });
 
-  const primary = "#0072ff";
-  const textDark = "#222";
-  const textGray = "#555";
+    const target = document.getElementById(btn.dataset.tab);
+    target.classList.add("active");
+  });
+});
+document.addEventListener("DOMContentLoaded", function () {
+  // Reset tab buttons
+  document.querySelectorAll(".tab-btn-rec").forEach(b =>
+    b.classList.remove("active")
+  );
 
-  const addY = (val = 20) => (y += val);
-
-  // HEADER
-  doc.setFillColor(0, 114, 255);
-  doc.rect(0, 0, pageWidth, 70, "F");
-  doc.setTextColor("#ffffff");
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(20);
-  doc.text("🎤 AI Speaking Performance Report", margin, 45);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(11);
-  doc.text(`Recording: {{ rec.title }}`, margin, 65);
-  doc.text(`Date: {{ rec.created_at|date:"Y-m-d H:i" }}`, pageWidth - 180, 65);
-
-  y = 100;
-
-  // Performance Summary
-  doc.setTextColor(primary);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.text("📈 Performance Summary", margin, y);
-  addY(15);
-
-  const scores = [
-    ["⚡ Energy", energy],
-    ["✂️ Conciseness", conciseness],
-    ["🌟 Confidence", confidence],
-  ];
-  const overall = Math.round((energy + conciseness + confidence) / 3);
-
-  doc.setFontSize(12);
-  doc.setTextColor(textDark);
-  scores.forEach(([label, val], idx) => {
-    const barY = y + idx * 30;
-    const barWidth = (pageWidth - 220) * (val / 100);
-    const color = val < 60 ? [255, 77, 77] : val < 80 ? [255, 204, 0] : [0, 200, 81];
-
-    doc.text(`${label}: ${val.toFixed(0)}%`, margin, barY + 10);
-    doc.setFillColor(230);
-    doc.roundedRect(margin + 100, barY, pageWidth - 180, 8, 3, 3, "F");
-    doc.setFillColor(...color);
-    doc.roundedRect(margin + 100, barY, barWidth, 8, 3, 3, "F");
+  // Reset tab contents
+  document.querySelectorAll(".tab-content").forEach(c => {
+    c.classList.remove("active");
+    c.style.display = ""; // remove any inline styles
   });
 
-  addY(100);
+  // Force Transcript tab active
+  const transcriptBtn = document.querySelector('.tab-btn-rec[data-tab="tab-transcript"]');
+  const transcriptTab = document.getElementById("tab-transcript");
 
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(primary);
-  doc.setFontSize(13);
-  doc.text(`Overall Score: ${overall}%`, margin, y);
-  addY(30);
-
-  if (chartImg) {
-    doc.addImage(chartImg, "PNG", margin, y, pageWidth - margin * 2, 150);
-    addY(170);
+  if (transcriptBtn && transcriptTab) {
+    transcriptBtn.classList.add("active");
+    transcriptTab.classList.add("active");
   }
-
-  doc.save("AI_Speaking_Report.pdf");
+});
+  function toggleTab(element) {
+  element.classList.toggle("active");
+  const content = element.nextElementSibling;
+  content.classList.toggle("show");
 }
-</script>
-{% endblock %}
+const audioPlayer = document.getElementById("mainAudio");
+
+function playSegment(start, end) {
+    if (!audioPlayer) return;
+
+    // Ensure audio is loaded before playing
+    if (audioPlayer.readyState < 2) {
+        audioPlayer.addEventListener("loadedmetadata", () => {
+            playSegment(start, end); // Retry after loaded
+        }, { once: true });
+        return;
+    }
+
+    // Pause first
+    audioPlayer.pause();
+    audioPlayer.currentTime = start;
+    audioPlayer.play();
+
+    // Remove previous listeners
+    audioPlayer.removeEventListener("timeupdate", stopAtEnd);
+
+    function stopAtEnd() {
+        if (audioPlayer.currentTime >= end) {
+            audioPlayer.pause();
+            audioPlayer.removeEventListener("timeupdate", stopAtEnd);
+        }
+    }
+
+    audioPlayer.addEventListener("timeupdate", stopAtEnd);
+}
+const pauseData = [
+  {% for seg in pace_segments %}
+    {% if seg.has_pause %}
+      {
+        time: {{ seg.start_s }},
+        duration: {{ seg.pause_ms }}
+      },
+    {% endif %}
+  {% endfor %}
+];
+// const ctx = document.getElementById('pauseChart');
+// if (ctx && pauseData.length) {
+//   new Chart(ctx, {
+//     type: 'bar',
+//     data: {
+//       labels: pauseData.map(p => p.time.toFixed(1) + 's'),
+//       datasets: [{
+//         label: 'Pause Duration (ms)',
+//         data: pauseData.map(p => p.duration),
+//         backgroundColor: '#ff9800'
+//       }]
+//     },
+//     options: {
+//       plugins: {
+//         legend: { display: false }
+//       },
+//       scales: {
+//         y: {
+//           beginAtZero: true,
+//           title: { display: true, text: 'Milliseconds' }
+//         }
+//       }
+//     }
+//   });
+// }
+/* Filler word audio play code start*/
+document.addEventListener("click", function (e) {
+    const filler = e.target.closest(".filler-word");
+    if (!filler) return;
+
+    const start = parseFloat(filler.dataset.start);
+    const end = parseFloat(filler.dataset.end);
+
+    if (isNaN(start) || isNaN(end)) return;
+
+    const audio = document.getElementById("mainAudio");
+    if (!audio) return;
+
+    // Stop current playback
+    audio.pause();
+    audio.currentTime = start;
+    audio.play();
+
+    // Stop at segment end
+    const stopAtEnd = () => {
+        if (audio.currentTime >= end) {
+            audio.pause();
+            audio.removeEventListener("timeupdate", stopAtEnd);
+        }
+    };
+
+    audio.addEventListener("timeupdate", stopAtEnd);
+
+    // Highlight active segment
+    document.querySelectorAll(".segment").forEach(s => s.classList.remove("active"));
+    filler.closest(".segment")?.classList.add("active");
+});
+/** Pace script */
+function highlightSegment(index) {
+    document.querySelectorAll(".segment").forEach(s => s.classList.remove("active"));
+
+    const seg = document.querySelector(`.segment[data-index="${index}"]`);
+    if (seg) {
+        seg.classList.add("active");
+        seg.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+}
+document.addEventListener("click", function (e) {
+  if (e.target.classList.contains("filler-word")) {
+    const start = parseFloat(e.target.dataset.start);
+    const end = parseFloat(e.target.dataset.end);
+    playSegment(start, end);
+  }
+});
+
+//hedging words code start 
+document.addEventListener("click", function (e) {
+    const hedge = e.target.closest(".hedging-word");
+    if (!hedge) return;
+
+    const start = parseFloat(hedge.dataset.start);
+    const end = parseFloat(hedge.dataset.end);
+
+    if (isNaN(start) || isNaN(end)) return;
+
+    const audio = document.getElementById("mainAudio");
+    if (!audio) return;
+
+    audio.pause();
+    audio.currentTime = start;
+    audio.play();
+
+    const stopAtEnd = () => {
+        if (audio.currentTime >= end) {
+            audio.pause();
+            audio.removeEventListener("timeupdate", stopAtEnd);
+        }
+    };
+
+    audio.addEventListener("timeupdate", stopAtEnd);
+
+    document.querySelectorAll(".segment").forEach(s => s.classList.remove("active"));
+    hedge.closest(".segment")?.classList.add("active");
+});
+
+
+</script> {% endblock %}

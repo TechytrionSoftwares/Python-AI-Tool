@@ -326,6 +326,7 @@ button{
     <a href="{% url 'practice' %}" class="{% if request.resolver_match.url_name == 'practice' %}active{% endif %}">Practice</a>
     <a href="{% url 'recording' %}" class="{% if request.resolver_match.url_name == 'recording' %}active{% endif %}">Recording</a>
     {% if user.is_authenticated %}
+    <a href="{% url 'practice' %}" class="{% if request.resolver_match.url_name == 'practice' %}active{% endif %}">Settings</a>
       <a href="{% url 'logout' %}">Logout</a>
     {% endif %}
   </div>
@@ -369,6 +370,56 @@ videoInput.addEventListener("change", () => {
   document.getElementById("videoFileName").textContent =
     videoInput.files?.[0]?.name || "No file selected";
 });
+function enableDragAndDrop(labelId, inputId, fileNameId) {
+  const label = document.getElementById(labelId);
+  const input = document.getElementById(inputId);
+  const fileName = document.getElementById(fileNameId);
+
+  if (!label || !input) return;
+
+  // Prevent default drag behavior
+  ["dragenter", "dragover", "dragleave", "drop"].forEach(event => {
+    label.addEventListener(event, e => e.preventDefault());
+    label.addEventListener(event, e => e.stopPropagation());
+  });
+
+  // Visual feedback
+  label.addEventListener("dragover", () => {
+    label.style.borderColor = "#4CAF50";
+    label.style.background = "rgba(76,175,80,0.08)";
+  });
+
+  label.addEventListener("dragleave", () => {
+    label.style.borderColor = "";
+    label.style.background = "";
+  });
+
+  // Handle drop
+  label.addEventListener("drop", e => {
+    const files = e.dataTransfer.files;
+    if (!files.length) return;
+
+    input.files = files;
+    if (fileName) {
+      fileName.textContent = files[0].name;
+    }
+
+    label.style.borderColor = "";
+    label.style.background = "";
+  });
+
+  // Handle manual file select
+  input.addEventListener("change", () => {
+    if (input.files.length && fileName) {
+      fileName.textContent = input.files[0].name;
+    }
+  });
+}
+
+// Enable drag & drop
+enableDragAndDrop("audioLabel", "audioInput", "audioFileName");
+enableDragAndDrop("videoLabel", "videoInput", "videoFileName");
+
 </script>
 </body>
 </html>
