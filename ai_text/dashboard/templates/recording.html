@@ -1,6 +1,33 @@
 {% extends "base.html" %}
 {% load static %}
 {% block content %}
+<style>
+  .progress-bar {
+  width: 140px;
+  height: 6px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: #286be6;
+  transition: width 0.4s ease;
+}
+
+.progress-text {
+  font-size: 11px;
+  color: #aaa;
+}
+.recording-link {
+  color: #286be6;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+</style>
 <div class="recordings-container">
   <h2><i class="fas fa-microphone"></i> Your Recordings</h2>
 
@@ -22,17 +49,43 @@
         {% for recording in recordings %}
         <tr>
           <td><input type="checkbox" name="selected_ids" value="{{ recording.id }}"></td>
-          <td><a href="{% url 'recording_detail' recording.id %}" style="color:#286be6; text-decoration:none;">{{ recording.title }}</a></td>
-          <td>{{ recording.duration|floatformat:2 }}</td>
+           <td class="title-cell" data-title="{{ recording.title }}">
+              {% if recording.status == "completed" %}
+                <a href="{% url 'recording_detail' recording.id %}" class="recording-link">
+                  {{ recording.title }}
+                </a>
+              {% else %}
+                <span style="color:#777;">{{ recording.title }}</span>
+              {% endif %}
+            </td>
+
+
+          <td class="duration-cell">
+            {{ recording.duration|floatformat:2 }}
+          </td>
           <td>{{ recording.created_at|date:"m/d/Y" }}</td>
-          <td>Completed</td>
           <td>
-            {% if recording.pdf_url %}
-              <a href="{{ recording.pdf_url }}" target="_blank">📄 PDF</a>
+            {% if recording.status != "completed" %}
+              <div class="progress-wrapper" data-id="{{ recording.id }}">
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width: {{ recording.progress }}%"></div>
+                </div>
+                <small class="progress-text">{{ recording.progress }}%</small>
+              </div>
             {% else %}
-              N/A
+              Completed
             {% endif %}
           </td>
+            <td class="action-cell">
+              {% if recording.status == "completed" and recording.pdf_url %}
+                <a href="{{ recording.pdf_url }}" target="_blank">
+                  <span style="color:red;">📄 PDF</span>
+                </a>
+              {% else %}
+                N/A
+              {% endif %}
+            </td>
+
         </tr>
         {% empty %}
         <tr><td colspan="6" style="text-align:center;">No recordings yet.</td></tr>
@@ -131,4 +184,63 @@
   background: #990000;
 }
 </style>
+<script>
+function pollRecordingProgress() {
+  document.querySelectorAll(".progress-wrapper").forEach(wrapper => {
+    const id = wrapper.dataset.id;
+
+    fetch(`/dashboard/recording-status/${id}/`)
+      .then(res => res.json())
+      .then(data => {
+        const row = wrapper.closest("tr");
+        const durationCell = row.querySelector(".duration-cell");
+        if (durationCell && data.duration) {
+          durationCell.textContent = data.duration.toFixed(2);
+        }
+
+        // Progress bar update
+        const bar = wrapper.querySelector(".progress-fill");
+        const text = wrapper.querySelector(".progress-text");
+
+        bar.style.width = data.progress + "%";
+        text.textContent = data.progress + "%";
+
+        // When completed → update row dynamically
+        if (data.status === "completed") {
+
+           if (durationCell && data.duration !== undefined) {
+              durationCell.textContent = Number(data.duration).toFixed(2);
+            }
+          // STATUS COLUMN
+          wrapper.parentElement.innerHTML = "Completed";
+
+          // TITLE COLUMN (make clickable)
+          const titleCell = row.querySelector(".title-cell");
+          titleCell.innerHTML = `
+            <a href="/dashboard/recording/${id}/" class="recording-link">
+              ${titleCell.dataset.title}
+            </a>
+          `;
+
+          // ACTION COLUMN (PDF)
+          const actionCell = row.querySelector(".action-cell");
+          if (data.pdf_url) {
+            actionCell.innerHTML = `
+              <a href="${data.pdf_url}" target="_blank">
+                <span style="color:red;">📄 PDF</span>
+              </a>
+            `;
+          }
+
+          // Remove from polling list
+          wrapper.remove();
+        }
+      });
+  });
+}
+
+// Start polling immediately + every 2s
+pollRecordingProgress();
+setInterval(pollRecordingProgress, 2000);
+</script>
 {% endblock %}

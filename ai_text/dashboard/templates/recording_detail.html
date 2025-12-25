@@ -591,6 +591,14 @@
   transform: translateY(-4px);
   box-shadow: 0 8px 25px rgba(0,0,0,0.4);
 }
+#tab-summary ul li {
+  margin-bottom: 10px;
+  color: #ddd;
+}
+
+#tab-summary h2 {
+  color: #00c6ff;
+}
 
 </style>
 <div class="header-info">
@@ -743,10 +751,6 @@
 <audio id="mainAudio" controls>
     <source src="{{ rec.audio_url }}" type="audio/mpeg">
 </audio>
-<!-- <div class="chart-box">
-  <h3>⏱ Hesitation Timeline</h3>
-  <canvas id="pauseChart"></canvas>
-</div> -->
 
 <div id="segmentedTranscript">
   {% for seg in segments %}
@@ -775,6 +779,39 @@
   </div>
 
  
+<div class="tab-content" id="tab-summary">
+  <div class="container">
+    <div class="metrics" style="width:100%;">
+
+      <h2 style="margin-bottom:20px;">📝 Meeting Summary</h2>
+
+      {% if summary_data.summary %}
+        <ul style="line-height:1.8;">
+          {% for item in summary_data.summary %}
+            <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p>Summary not available.</p>
+      {% endif %}
+
+      <hr style="margin:30px 0; border-color:#333;">
+
+      <h2 style="margin-bottom:20px;">✅ Action Items</h2>
+
+      {% if summary_data.actions %}
+        <ul style="line-height:1.8;">
+          {% for action in summary_data.actions %}
+            <li>{{ action }}</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p>No action items identified.</p>
+      {% endif %}
+
+    </div>
+  </div>
+</div>
  
 
 <div class="tab-content" id="tab-grammar">
@@ -817,11 +854,13 @@
               <h4>🔍 Detailed Corrections</h4>
               <ul>
                 {% for error in grammar_results %}
-                  <li>
-                    <strong>{{ error.type|default:"Grammar"|title }}</strong><br>
-                    "{{ error.original }}" → "{{ error.correction }}"
-                    <small>{{ error.explanation }}</small>
-                  </li>
+                  {% if error.type in "article verb tense plural pronoun clarity" %}
+                    <li>
+                      <strong>{{ error.type|title }}</strong><br>
+                      "{{ error.original }}" → "{{ error.correction }}"
+                      <small>{{ error.explanation }}</small>
+                    </li>
+                  {% endif %}
                 {% endfor %}
               </ul>
             </div>
