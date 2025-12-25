@@ -326,7 +326,7 @@ button{
     <a href="{% url 'practice' %}" class="{% if request.resolver_match.url_name == 'practice' %}active{% endif %}">Practice</a>
     <a href="{% url 'recording' %}" class="{% if request.resolver_match.url_name == 'recording' %}active{% endif %}">Recording</a>
     {% if user.is_authenticated %}
-    <a href="{% url 'practice' %}" class="{% if request.resolver_match.url_name == 'practice' %}active{% endif %}">Settings</a>
+    <a href="{% url 'settings' %}" class="{% if request.resolver_match.url_name == 'settings' %}active{% endif %}">Settings</a>
       <a href="{% url 'logout' %}">Logout</a>
     {% endif %}
   </div>
@@ -420,6 +420,44 @@ function enableDragAndDrop(labelId, inputId, fileNameId) {
 enableDragAndDrop("audioLabel", "audioInput", "audioFileName");
 enableDragAndDrop("videoLabel", "videoInput", "videoFileName");
 
+// Password change mode script start
+function openPasswordModal() {
+  document.getElementById("passwordModal").style.display = "flex";
+}
+
+function closePasswordModal() {
+  document.getElementById("passwordModal").style.display = "none";
+}
+
+
+document.addEventListener("DOMContentLoaded", function () {
+  const form = document.getElementById("passwordForm");
+  form.addEventListener("submit", function (e) {
+    e.preventDefault(); // 🔥 THIS now works
+
+    fetch("{% url 'change_password_ajax' %}", {
+      method: "POST",
+      body: new FormData(form),
+      headers: {
+        "X-CSRFToken": form.querySelector("[name=csrfmiddlewaretoken]").value
+      }
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        alert("Password changed successfully!");
+        closePasswordModal();
+        form.reset();
+      } else {
+        document.getElementById("passwordErrors").innerText =
+          Object.values(data.errors).flat().join(" ");
+      }
+    });
+
+  });
+
+});
+// END password change model script 
 </script>
 </body>
 </html>

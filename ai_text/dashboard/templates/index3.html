@@ -16,7 +16,7 @@
 <!-- AUDIO TAB -->
 <div class="card-box" id="audio" style="display:block;">
   <h2 class="section-title">🎧 Upload Audio File</h2>
-  <form method="POST" enctype="multipart/form-data" action="{% url 'practice' %}">
+  <form method="POST" enctype="multipart/form-data">
     {% csrf_token %}
     <label class="upload-area" id="audioLabel">
       <div class="icon">⬆</div>
@@ -33,7 +33,7 @@
 <!-- VIDEO TAB -->
 <div class="card-box" id="video">
   <h2 class="section-title">🎬 Upload Video</h2>
-  <form method="POST" enctype="multipart/form-data" action="{% url 'practice' %}">
+  <form method="POST" enctype="multipart/form-data">
     {% csrf_token %}
     <label class="upload-area" id="videoLabel">
       <div class="icon">⬆</div>
@@ -48,66 +48,104 @@
 </div>
 </div>
 
+<!-- Upload Progress Overlay -->
+<div id="uploadOverlay" style="
+  display:none;
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.65);
+  z-index:10000;
+  align-items:center;
+  justify-content:center;
+  flex-direction:column;
+  color:#fff;
+  font-size:16px;
+">
+  <div style="margin-bottom:14px;">Uploading file…</div>
+  <div style="width:260px;height:8px;background:#333;border-radius:6px;overflow:hidden;">
+    <div id="uploadBar" style="
+      width:0%;
+      height:100%;
+      background:#286be6;
+      transition:width .3s;
+    "></div>
+  </div>
+</div>
+
 
 <!-- ✅ Processing Overlay + Success Notification -->
 <script>
-document.addEventListener("DOMContentLoaded", function() {
-  // When user submits any form (audio or video)
-  document.querySelectorAll("form").forEach(form => {
-    form.addEventListener("submit", function(e) {
-      // Create overlay
-      const overlay = document.createElement("div");
-      overlay.id = "processing-overlay";
-      Object.assign(overlay.style, {
-        position: "fixed",
-        top: "0",
-        left: "0",
-        width: "100%",
-        height: "100%",
-        background: "rgba(0, 0, 0, 0.7)",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        alignItems: "center",
-        color: "#fff",
-        fontSize: "18px",
-        zIndex: "9999",
-        textAlign: "center",
-      });
+document.querySelectorAll("form").forEach(form => {
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
 
-      overlay.innerHTML = `
-        <div>
-          <div style="
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #4CAF50;
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            margin: 0 auto;
-            animation: spin 1s linear infinite;">
-          </div>
-          <p style="margin-top:15px;line-height:1.5;">
-            File is being processed...
-          </p>
-        </div>
-      `;
+    const overlay = document.getElementById("uploadOverlay");
+    const bar = document.getElementById("uploadBar");
 
-      // Add spinner animation
-      const style = document.createElement("style");
-      style.textContent = `
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
+    overlay.style.display = "flex";
+    bar.style.width = "0%";
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "{% url 'practice' %}", true);
+    xhr.setRequestHeader(
+      "X-CSRFToken",
+      form.querySelector("[name=csrfmiddlewaretoken]").value
+    );
+
+    xhr.upload.onprogress = function (e) {
+      if (e.lengthComputable) {
+        const percent = Math.round((e.loaded / e.total) * 100);
+        bar.style.width = percent + "%";
+      }
+    };
+
+    xhr.onload = function () {
+      overlay.style.display = "none";
+
+      try {
+        const data = JSON.parse(xhr.responseText);
+
+        if (data.success) {
+          showToast("✅ File uploaded. Processing in background.");
+          setTimeout(() => {
+            window.location.href = "{% url 'recording' %}";
+          }, 1200);
+        } else {
+          showToast("❌ Upload failed");
         }
-      `;
-      document.head.appendChild(style);
+      } catch {
+        showToast("❌ Server error");
+      }
+    };
 
-      document.body.appendChild(overlay);
-    });
+    xhr.onerror = function () {
+      overlay.style.display = "none";
+      showToast("❌ Network error");
+    };
+
+    xhr.send(new FormData(form));
   });
 });
+
+function showToast(message) {
+  const toast = document.createElement("div");
+  toast.textContent = message;
+  Object.assign(toast.style, {
+    position: "fixed",
+    bottom: "20px",
+    right: "20px",
+    background: "#286be6",
+    color: "#fff",
+    padding: "10px 15px",
+    borderRadius: "8px",
+    fontSize: "14px",
+    zIndex: "10001",
+  });
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
 </script>
-{% if transcript or video_transcript %}
+<!-- {% if transcript or video_transcript %}
 <script>
   window.addEventListener("load", () => {
     // Remove overlay if still visible
@@ -134,7 +172,7 @@ document.addEventListener("DOMContentLoaded", function() {
   });
   
 </script>
-{% endif %}
+{% endif %} -->
 
 {% endblock %}
 
