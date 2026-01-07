@@ -1,0 +1,123 @@
+{% include "adminpanel/header.html" %}
+
+<div class="layout">
+    {% include "adminpanel/sidebar.html" %}
+
+    <main class="main">
+
+        <!-- Header -->
+       <div class="order-header">
+        <h2>Order #{{ order.id }}</h2>
+
+        {% if order.status == "success" %}
+            <span class="order-status success">Completed</span>
+        {% else %}
+            <span class="order-status failed">Failed</span>
+        {% endif %}
+    </div>
+
+
+        <div class="order-grid">
+
+            <!-- LEFT: Order Summary -->
+            <div class="order-card">
+                <h3>Order Details</h3>
+
+                <div class="order-row">
+                    <span>Plan</span>
+                    <strong>{{ order.subscription.name }}</strong>
+                </div>
+
+                <div class="order-row">
+                    <span>Amount</span>
+                    <strong>${{ order.amount }}</strong>
+                </div>
+
+                <div class="order-row">
+                    <span>Payment Status</span>
+                    {% if order.status == "success" %}
+                        <span class="badge success">Success</span>
+                    {% else %}
+                        <span class="badge danger">Failed</span>
+                    {% endif %}
+                </div>
+
+                <div class="order-row">
+                    <span>Response Code</span>
+                    <strong>{{ order.response_code }}</strong>
+                </div>
+
+                <div class="order-row">
+                    <span>Date</span>
+                    <strong>{{ order.created_at|date:"M d, Y · H:i" }}</strong>
+                </div>
+            </div>
+
+            <!-- RIGHT: Customer Info -->
+            <div class="order-card">
+                <h3>Customer Details</h3>
+
+                <div class="order-row">
+                    <span>Username</span>
+                    <strong>{{ order.user.username }}</strong>
+                </div>
+
+                <div class="order-row">
+                    <span>Email</span>
+                    <strong>{{ order.user.email }}</strong>
+                </div>
+
+                <div class="order-row">
+                    <span>Transaction ID</span>
+                    <strong>{{ order.transaction_id }}</strong>
+                </div>
+            </div>
+
+        </div>
+        <!-- Payment History -->
+<div class="order-history">
+
+    <h3>Payment History</h3>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Transaction</th>
+                <th>Plan</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Date</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for pay in payment_history %}
+            <tr {% if pay.id == order.id %}class="current-order"{% endif %}>
+                <td>{{ pay.transaction_id }}</td>
+                <td>{{ pay.subscription.name }}</td>
+                <td>${{ pay.amount }}</td>
+                <td>
+                    {% if pay.status == "success" %}
+                        <span class="badge success">Success</span>
+                    {% else %}
+                        <span class="badge danger">Failed</span>
+                    {% endif %}
+                </td>
+                <td>{{ pay.created_at|date:"M d, Y" }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5">No payment history found.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+</div>
+
+
+        <a href="{% url 'admin-orders' %}" class="back-btn">
+            ← Back to Orders
+        </a>
+
+    </main>
+</div>

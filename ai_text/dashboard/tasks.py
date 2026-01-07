@@ -21,7 +21,7 @@ def process_recording_task(self, recording_id):
         recording.progress = 20
         recording.save()
 
-        # 🔽 DOWNLOAD FROM S3
+        #  DOWNLOAD FROM S3
         temp_original = tempfile.NamedTemporaryFile(delete=False).name
         parsed = urlparse(recording.audio_url)
         s3_key = parsed.path.lstrip("/")
@@ -31,7 +31,7 @@ def process_recording_task(self, recording_id):
         recording.progress = 30
         recording.save()
 
-        # 🔽 AUDIO / VIDEO HANDLING (reuse your logic)
+        #  AUDIO / VIDEO HANDLING (reuse your logic)
         if recording.file_type == "video":
             from moviepy.editor import VideoFileClip
             clip = VideoFileClip(temp_original)
@@ -41,7 +41,7 @@ def process_recording_task(self, recording_id):
             sound = AudioSegment.from_file(temp_audio)
 
         else:
-            # 🔥 AUDIO FILE HANDLING (THIS WAS MISSING)
+            #  AUDIO FILE HANDLING (THIS WAS MISSING)
             sound = AudioSegment.from_file(temp_original)
 
         # Normalize audio
@@ -56,7 +56,7 @@ def process_recording_task(self, recording_id):
         recording.progress = 45
         recording.save()
 
-        # 🔽 TRANSCRIPTION
+        #  TRANSCRIPTION
         timestamped_segments = transcribe_audio_with_timestamps(temp_wav)
         transcript = " ".join(s["text"] for s in timestamped_segments)
 
@@ -109,7 +109,7 @@ def process_recording_task(self, recording_id):
         recording.progress = 60
         recording.save()
 
-        # 🔽 ANALYSIS
+        #  ANALYSIS
         filler = analyze_filler_words_from_text(transcript, audio_duration)
         pacing = analyze_pacing(transcript, audio_duration)
         grammar_data = analyze_grammar_with_claude_sync(transcript)
@@ -123,13 +123,13 @@ def process_recording_task(self, recording_id):
         recording.progress = 80
         recording.save()
 
-        # 🔽 PDF
+        #  PDF
         pdf_path = generate_pdf(transcript)
         pdf_key = f"uploads/pdf/{recording.id}.pdf"
         with open(pdf_path, "rb") as f:
             pdf_url = upload_to_s3(f, pdf_key)
 
-        # 🔽 SAVE RESULTS
+        #  SAVE RESULTS
         recording.transcript = transcript
         recording.pdf_url = pdf_url
         recording.duration = audio_duration
@@ -145,10 +145,11 @@ def process_recording_task(self, recording_id):
         "pace_segments": pace_segments
         }
 
-        recording.grammar_data = {
-        "analysis": grammar_results,
-        "inline": grammar_inline
+        recording.grammar_data == {
+            "analysis": [...],
+            "inline": "<span>...</span>"
         }
+
 
         recording.hedging_data = hedging_data
         recording.conciseness_data = conciseness_data

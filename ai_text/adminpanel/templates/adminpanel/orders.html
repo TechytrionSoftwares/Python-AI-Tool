@@ -1,0 +1,91 @@
+{% load id_filters %}
+{% include "adminpanel/header.html" %}
+
+<div class="layout">
+
+    {% include "adminpanel/sidebar.html" %}
+
+    <main class="main">
+        <h2 class="top-head">Orders</h2>
+
+        <div class="table-box">
+
+            <!-- Search + Filter -->
+            <form method="get" class="search-box">
+                <input
+                    type="text"
+                    name="q"
+                    placeholder="Search user / transaction..."
+                    value="{{ search }}"
+                >
+
+                <select name="status">
+                    <option value="">All Status</option>
+                    <option value="success" {% if status == "success" %}selected{% endif %}>Success</option>
+                    <option value="failed" {% if status == "failed" %}selected{% endif %}>Failed</option>
+                </select>
+
+                <button type="submit">Search</button>
+            </form>
+
+            <!-- Orders Table -->
+            <table>
+                <thead>
+                    <tr>
+                        <th>Transaction</th>
+                        <th>User</th>
+                        <th>Plan</th>
+                        <th>Amount</th>
+                        <th>Status</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for order in page_obj %}
+                    <tr>
+                        <td>
+                            <a href="{% url 'admin-order-detail' order.id|encode_recording_id %}">
+                                {{ order.transaction_id }}
+                            </a>
+                        </td>
+                        <td>{{ order.user.username }}</td>
+                        <td>{{ order.subscription.name }}</td>
+                        <td>${{ order.amount }}</td>
+                        <td>
+                            {% if order.status == "success" %}
+                                <span class="badge success">Success</span>
+                            {% else %}
+                                <span class="badge danger">Failed</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ order.created_at|date:"Y-m-d" }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6">No orders found</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="pagination">
+            {% if page_obj.has_previous %}
+                <a href="?page=1&q={{ search }}&status={{ status }}">« First</a>
+                <a href="?page={{ page_obj.previous_page_number }}&q={{ search }}&status={{ status }}">‹ Prev</a>
+            {% endif %}
+
+            <span>
+                Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+            </span>
+
+            {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}&q={{ search }}&status={{ status }}">Next ›</a>
+                <a href="?page={{ page_obj.paginator.num_pages }}&q={{ search }}&status={{ status }}">Last »</a>
+            {% endif %}
+        </div>
+
+    </main>
+
+</div>

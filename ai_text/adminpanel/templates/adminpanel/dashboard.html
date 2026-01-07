@@ -1,0 +1,42 @@
+{% load static %}
+{% include "adminpanel/header.html" %}
+<div class="layout">
+    <!-- SIDEBAR -->
+   {% include "adminpanel/sidebar.html" %}
+    <!-- MAIN -->
+    <main class="main">
+        <!-- TOP CARDS -->
+        <div class="cards">
+            <div class="card dark">
+                <p>Earning</p>
+                <h2>$ {{ revenue }}</h2>
+            </div>
+            <div class="card">
+                <p>Orders</p>
+                <h2>{{ orders }}</h2>
+            </div>
+            <div class="card">
+                <p>Users</p>
+                <h2>{{ users }}</h2>
+            </div>
+            <div class="card">
+                <p>Rating</p>
+                <h2>4.5 ⭐</h2>
+            </div>
+        </div>
+        <!-- CHARTS -->
+        <div class="charts">
+            <div class="chart-box">
+                <canvas id="barChart"></canvas>
+            </div>
+
+            <div class="chart-box small">
+                <canvas id="donutChart"></canvas>
+                <p class="percent">45%</p>
+            </div>
+        </div>
+    </main>
+</div>
+<script src="{% static 'adminpanel/js/charts.js' %}"></script>
+</body>
+</html>

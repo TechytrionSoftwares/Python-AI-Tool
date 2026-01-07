@@ -1,0 +1,64 @@
+<aside class="sidebar">
+    <div class="sidebar-top">
+        <div class="profile">
+            <img src="https://msgsndr-private.storage.googleapis.com/companyPhotos/d0babe0d-3b32-4b9d-8d9a-5f1b5cc9aecc.png" alt="">
+            <h3 class="usrnme_ad">{{ request.user.username|upper }}</h3>
+
+            {% if is_superadmin %}
+                <p style="margin-bottom: 20px; color: #ddd;">Superadmin</p>
+            {% elif is_admin %}
+                <p style="margin-bottom: 20px; color: #ddd;">Admin</p>
+            {% else %}
+                <p style="margin-bottom: 20px; color: #ddd;">Admin</p>
+            {% endif %}
+        </div>
+
+        <ul class="menu">
+            <li class="{% if request.resolver_match.url_name == 'admin-dashboard' %}active{% endif %}">
+                <a href="{% url 'admin-dashboard' %}">
+                    <i class="fa-solid fa-gauge"></i> Dashboard
+                </a>
+            </li>
+
+            <li class="{% if request.resolver_match.url_name == 'admin-create-user' %}active{% endif %}">
+                <a href="{% url 'admin-create-user' %}">
+                    <i class="fa-solid fa-user-plus"></i> Create User
+                </a>
+            </li>
+
+            <li class="{% if request.resolver_match.url_name == 'admin-users' %}active{% endif %}">
+                <a href="{% url 'admin-users' %}">
+                    <i class="fa-solid fa-users"></i> View Users
+                </a>
+            </li>
+
+            <li class="{% if request.resolver_match.url_name == 'admin-subscriptions' %}active{% endif %}">
+                <a href="{% url 'admin-subscriptions' %}">
+                    <i class="fa-solid fa-money-bill-wheat"></i> Subscriptions
+                </a>
+            </li>
+
+            <li class="{% if request.resolver_match.url_name == 'admin-orders' %}active{% endif %}">
+                <a href="{% url 'admin-orders' %}">
+                    <i class="fa-brands fa-first-order"></i> Orders
+                </a>
+            </li>
+
+            <li class="{% if request.resolver_match.url_name == 'admin-settings' %}active{% endif %}">
+                <a href="#">
+                    <i class="fa-solid fa-gear"></i> Settings
+                </a>
+            </li>
+        </ul>
+    </div>
+
+    <!-- BOTTOM SECTION -->
+    <div class="sidebar-bottom">
+        <form method="post" action="{% url 'logout' %}">
+            {% csrf_token %}
+            <button type="submit" class="logout-btn">
+                ⏻ Logout
+            </button>
+        </form>
+    </div>
+</aside>

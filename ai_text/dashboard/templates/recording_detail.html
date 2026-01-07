@@ -1,34 +1,9 @@
 {% extends 'base.html' %} {% block title %}Recording Details{% endblock %} {% block content %} <style>
-  body {
-    background: #0b0e11;
-    color: #fff;
-    font-family: "Inter", sans-serif;
-  }
-
-  .container {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    padding: 20px 60px;
-    gap: 25px;
-    padding-top: 0px;
-  }
-
-  .metrics,
-  .transcript {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 16px;
-    box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
-    padding: 25px;
-  }
-
-  .metrics {
-    flex: 3 1 350px;
-  }
-
-  .transcript {
-    flex: 2 1 600px;
-  }
+ 
+  .container {display: flex;flex-wrap: wrap;justify-content: space-between;padding: 20px 60px;gap: 25px;padding-top: 0px;}
+  .metrics, .transcript {background: rgba(255, 255, 255, 0.05);border-radius: 16px;box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);padding: 25px;}
+  .metrics {flex: 3 1 350px;height: 660px;overflow-y: auto;}
+  .transcript {flex: 2 1 600px;}
 
   .header-info {
     text-align: left;
@@ -54,7 +29,7 @@
     padding: 10px 25px;
     display: inline-block;
     border-radius: 8px;
-    font-weight: 600;
+    font-weight: 500;
     margin-top: 10px;
     position: fixed;
     right: 0;
@@ -335,7 +310,9 @@
     border-left-color: #00c851;
     background: rgba(0, 200, 81, 0.1);
   }
-
+  span.pause-flag {
+      display: none;
+  }
   .tip-card.severity-none {
     border-left-color: #00c6ff;
     background: rgba(0, 198, 255, 0.1);
@@ -353,7 +330,7 @@
   .tip-issue {
     color: #fff;
     font-size: 16px;
-    font-weight: 600;
+    font-weight: 500;
     margin-bottom: 10px;
   }
 
@@ -424,8 +401,8 @@
   margin-top: 15px;
   background: #000;
     padding: 20px;
-    height: 300px;
-    overflow-y: scroll;
+    height: 500px;
+    overflow-y: auto;
 }
 
 .segment {
@@ -536,6 +513,11 @@
   background: rgba(88, 101, 242, 0.35) !important;
   border-left: 4px solid #5865f2;
 }
+.word-selected {
+  outline: 2px solid #00c6ff;
+  background: rgba(0, 198, 255, 0.45) !important;
+  border-radius: 4px;
+}
 
 .hedging-word {
     background: rgba(255, 87, 34, 0.45);
@@ -544,7 +526,25 @@
     cursor: pointer;
     border-bottom: 2px dotted #ff5722;
     font-weight: 600;
+    position: relative; /* 🔴 REQUIRED for tooltip */
 }
+
+.hedging-word:hover::after {
+    content: "Hedging word: " attr(data-word);
+    position: absolute;
+    top: -32px;
+    left: 0;
+    background: #1e1e1e;
+    color: #fff;
+    padding: 6px 10px;
+    font-size: 12px;
+    border-radius: 6px;
+    white-space: nowrap;
+    z-index: 10;
+    box-shadow: 0px 0px 6px rgba(0,0,0,0.4);
+}
+
+
 .concise-repeat {
   background: rgba(0, 200, 81, 0.35);
   padding: 2px 4px;
@@ -599,6 +599,61 @@
 #tab-summary h2 {
   color: #00c6ff;
 }
+/* ===== Custom Dark Scrollbar ===== */
+
+/* Firefox */
+.metrics,
+#segmentedTranscript {
+  scrollbar-width: thin;
+  scrollbar-color: #444 #111;
+}
+
+/* Chrome, Edge, Safari */
+.metrics::-webkit-scrollbar,
+#segmentedTranscript::-webkit-scrollbar {
+  width: 8px;
+}
+
+.metrics::-webkit-scrollbar-track,
+#segmentedTranscript::-webkit-scrollbar-track {
+  background: #111;
+  border-radius: 10px;
+}
+
+.metrics::-webkit-scrollbar-thumb,
+#segmentedTranscript::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #444, #222);
+  border-radius: 10px;
+  border: 1px solid #000;
+}
+
+.metrics::-webkit-scrollbar-thumb:hover,
+#segmentedTranscript::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #00c6ff, #0072ff);
+}
+.copy-btn {
+    background: #990000;
+    border: 1.5px solid #990000;
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 22px;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+    width: 150px;
+}
+
+.copy-btn:hover {
+  background: #99000033;
+}
+
+.copy-btn.copied {
+  background: transparent;
+  color: #fff;
+}
 
 </style>
 <div class="header-info">
@@ -610,7 +665,7 @@
   <button class="tab-btn-rec active" data-tab="tab-transcript">📝 Transcript</button>
   <button class="tab-btn-rec" data-tab="tab-grammar">🧠 Grammar</button>
   <button class="tab-btn-rec" data-tab="tab-analytics">📊 Analytics</button>
-  <button class="tab-btn-rec" data-tab="tab-summary">📊 Summary</button>
+  <button class="tab-btn-rec" data-tab="tab-summary">📝 Summary</button>
 </div>
 <div class="tab-content active" id="tab-transcript">
   <div class="container">
@@ -655,13 +710,14 @@
         <span style="width:80px; display:inline-block;">{{ word }}</span>
 
         <div style="display:inline-block; width:220px; background:#333; border-radius:6px;">
-          <div style="
+          <div onclick="highlightWordInTranscript('{{ word }}', 'filler')"
+           style="
             width: {{ count|add:'0' }}0%;
-            background:#6c63ff;
+            background:#ffc10773;
             padding:4px;
             border-radius:6px;
             color:white;
-            font-size:12px;">
+            font-size:12px;cursor: pointer;">
             {{ count }}
           </div>
         </div>
@@ -724,13 +780,14 @@
         <span style="width:120px; display:inline-block;">{{ word }}</span>
 
         <div style="display:inline-block; width:220px; background:#333; border-radius:6px;">
-          <div style="
+          <div onclick="highlightWordInTranscript('{{ word }}', 'hedging')"
+          style="
             width: {{ count }}0%;
-            background:#ff9800;
+            background:#ff572273;
             padding:4px;
             border-radius:6px;
             color:white;
-            font-size:12px;">
+            font-size:12px;cursor: pointer;">
             {{ count }}
           </div>
         </div>
@@ -781,12 +838,12 @@
  
 <div class="tab-content" id="tab-summary">
   <div class="container">
-    <div class="metrics" style="width:100%;">
+    <div class="metrics" style="width:100%;overflow:hidden;height:100%">
 
-      <h2 style="margin-bottom:20px;">📝 Meeting Summary</h2>
+      <h2 id="summary-title" style="margin-bottom:20px;">📝 Meeting Summary</h2>
 
       {% if summary_data.summary %}
-        <ul style="line-height:1.8;">
+        <ul id="summary-list" style="line-height:1.8;">
           {% for item in summary_data.summary %}
             <li>{{ item }}</li>
           {% endfor %}
@@ -797,10 +854,10 @@
 
       <hr style="margin:30px 0; border-color:#333;">
 
-      <h2 style="margin-bottom:20px;">✅ Action Items</h2>
+      <h2 id="action-title" style="margin-bottom:20px;">✅ Action Items</h2>
 
       {% if summary_data.actions %}
-        <ul style="line-height:1.8;">
+        <ul id="action-list" style="line-height:1.8;">
           {% for action in summary_data.actions %}
             <li>{{ action }}</li>
           {% endfor %}
@@ -809,6 +866,11 @@
         <p>No action items identified.</p>
       {% endif %}
 
+      <div style="margin-top:30px;">
+  <button id="copySummaryBtn" class="copy-btn">
+    📋 Copy all
+  </button>
+</div>
     </div>
   </div>
 </div>
@@ -825,23 +887,36 @@
 
     <!-- RIGHT: Grammar Corrections -->
     <div class="transcript">
-      {% if grammar_inline %}
+      {% if grammar_inline or grammar_results %}
         <div class="grammar-section">
          <h3>
           🧠 Grammar Analysis
-          {% if grammar_data.issues %}
-            ({{ grammar_data.issues }} grammar issues)
-          {% elif grammar_data.has_correction %}
-            (Improved clarity)
+          {% if grammar_results %}
+            ({{ grammar_results|length }} issues found)
+          {% elif conciseness_data.repetition_count > 0 %}
+            (Clarity improved)
           {% endif %}
-          </h3>
+        </h3>
 
-          <div class="corrected-preview">
-            <h4>💡 Corrected Version</h4>
-            <div class="highlighted-text">
-              {{ grammar_inline|safe }}
-            </div>
-          </div>
+
+          {% if grammar_inline %}
+  <div class="corrected-preview">
+    <h4>💡 Corrected Version</h4>
+    <div class="highlighted-text">
+      {{ grammar_inline|safe }}
+    </div>
+  </div>
+{% elif grammar_results %}
+  <div class="corrected-preview">
+    <h4>💡 Corrected Version</h4>
+    <div class="highlighted-text" style="border-left-color:#ffbb33;">
+      No inline text changes were required.<br>
+      Improvements were made by removing repeated or unnecessary sentences
+      to improve clarity.
+    </div>
+  </div>
+{% endif %}
+
           {% if conciseness_data.repetition_count > 0 %}
             <div class="stats" style="margin-top:10px;">
               🔁 Removed repeated sentence for clarity
@@ -866,9 +941,15 @@
             </div>
           {% endif %}
         </div>
-      {% else %}
-        <p style="color:#1a8917;">✅ No grammar issues detected</p>
-      {% endif %}
+   {% else %}
+  <p style="color:#1a8917;">
+    ✅ No grammar errors detected
+    {% if conciseness_data.repetition_count > 0 %}
+      (but repetitions were removed for clarity)
+    {% endif %}
+  </p>
+{% endif %}
+
     </div>
 
   </div>
@@ -1083,7 +1164,7 @@ document.querySelectorAll(".tab-btn-rec").forEach(btn => {
     // Contents
     document.querySelectorAll(".tab-content").forEach(c => {
       c.classList.remove("active");
-      c.style.display = "";   // 🔥 CRITICAL: remove inline styles
+      c.style.display = "";   
     });
 
     const target = document.getElementById(btn.dataset.tab);
@@ -1099,7 +1180,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // Reset tab contents
   document.querySelectorAll(".tab-content").forEach(c => {
     c.classList.remove("active");
-    c.style.display = ""; // remove any inline styles
+    c.style.display = ""; 
   });
 
   // Force Transcript tab active
@@ -1124,7 +1205,7 @@ function playSegment(start, end) {
     // Ensure audio is loaded before playing
     if (audioPlayer.readyState < 2) {
         audioPlayer.addEventListener("loadedmetadata", () => {
-            playSegment(start, end); // Retry after loaded
+            playSegment(start, end); 
         }, { once: true });
         return;
     }
@@ -1156,31 +1237,7 @@ const pauseData = [
     {% endif %}
   {% endfor %}
 ];
-// const ctx = document.getElementById('pauseChart');
-// if (ctx && pauseData.length) {
-//   new Chart(ctx, {
-//     type: 'bar',
-//     data: {
-//       labels: pauseData.map(p => p.time.toFixed(1) + 's'),
-//       datasets: [{
-//         label: 'Pause Duration (ms)',
-//         data: pauseData.map(p => p.duration),
-//         backgroundColor: '#ff9800'
-//       }]
-//     },
-//     options: {
-//       plugins: {
-//         legend: { display: false }
-//       },
-//       scales: {
-//         y: {
-//           beginAtZero: true,
-//           title: { display: true, text: 'Milliseconds' }
-//         }
-//       }
-//     }
-//   });
-// }
+
 /* Filler word audio play code start*/
 document.addEventListener("click", function (e) {
     const filler = e.target.closest(".filler-word");
@@ -1259,6 +1316,80 @@ document.addEventListener("click", function (e) {
 
     document.querySelectorAll(".segment").forEach(s => s.classList.remove("active"));
     hedge.closest(".segment")?.classList.add("active");
+});
+
+function highlightWordInTranscript(word, type) {
+  const targetWord = word.toLowerCase().trim();
+
+  // Pick correct elements
+  const elements = document.querySelectorAll(
+    type === "filler" ? ".filler-word" : ".hedging-word"
+  );
+
+  let matched = [];
+
+  elements.forEach(el => {
+    const dataWord = (el.dataset.word || "").toLowerCase().trim();
+
+    if (dataWord === targetWord) {
+      matched.push(el);
+    }
+  });
+
+  if (!matched.length) return;
+
+  const alreadyActive = matched[0].classList.contains("word-selected");
+
+  // Clear previous highlights
+  document.querySelectorAll(".word-selected")
+    .forEach(el => el.classList.remove("word-selected"));
+
+  if (!alreadyActive) {
+    matched.forEach(el => el.classList.add("word-selected"));
+
+    matched[0].scrollIntoView({
+      behavior: "smooth",
+      block: "center"
+    });
+  }
+}
+document.getElementById("copySummaryBtn")?.addEventListener("click", () => {
+  let text = "";
+
+  // Meeting Summary
+  const summaryTitle = document.getElementById("summary-title")?.innerText;
+  const summaryItems = document.querySelectorAll("#summary-list li");
+
+  if (summaryTitle) {
+    text += summaryTitle.replace("📝", "").trim() + "\n";
+    summaryItems.forEach(li => {
+      text += "• " + li.innerText.trim() + "\n";
+    });
+    text += "\n";
+  }
+
+  // Action Items
+  const actionTitle = document.getElementById("action-title")?.innerText;
+  const actionItems = document.querySelectorAll("#action-list li");
+
+  if (actionTitle) {
+    text += actionTitle.replace("✅", "").trim() + "\n";
+    actionItems.forEach(li => {
+      text += "• " + li.innerText.trim() + "\n";
+    });
+  }
+
+  // Copy to clipboard
+  navigator.clipboard.writeText(text.trim()).then(() => {
+    const btn = document.getElementById("copySummaryBtn");
+    btn.classList.add("copied");
+    btn.innerText = "✅ Copied";
+
+    setTimeout(() => {
+      btn.classList.remove("copied");
+      btn.innerText = "📋 Copy all";
+    }, 1500);
+  });
 });
 
 

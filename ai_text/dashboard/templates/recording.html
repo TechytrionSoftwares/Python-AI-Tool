@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 {% block content %}
+{% load id_filters %}
 <style>
   .progress-bar {
   width: 140px;
@@ -51,7 +52,7 @@
           <td><input type="checkbox" name="selected_ids" value="{{ recording.id }}"></td>
            <td class="title-cell" data-title="{{ recording.title }}">
               {% if recording.status == "completed" %}
-                <a href="{% url 'recording_detail' recording.id %}" class="recording-link">
+                <a href="{% url 'recording_detail' recording.id|encode_recording_id %}" class="recording-link">
                   {{ recording.title }}
                 </a>
               {% else %}
@@ -79,7 +80,7 @@
             <td class="action-cell">
               {% if recording.status == "completed" and recording.pdf_url %}
                 <a href="{{ recording.pdf_url }}" target="_blank">
-                  <span style="color:red;">📄 PDF</span>
+                  <span style="color:#a20000;">📄 PDF</span>
                 </a>
               {% else %}
                 N/A
@@ -116,6 +117,12 @@
 </div>
 
 <script>
+   const deleteForm = document.getElementById("deleteForm");
+  if (deleteForm) {
+    deleteForm.addEventListener("submit", function () {
+      window.__STOP_POLLING__ = true;
+    });
+  }
   // Select all checkboxes
   document.getElementById('select-all').addEventListener('click', function() {
     const checked = this.checked;
@@ -133,10 +140,12 @@
   padding: 20px;
   box-shadow: 0 0 15px rgba(255,255,255,0.1);
 }
+
 .recordings-container h2 {
-  color: #ddd;
+  color: #fff;
   text-align: left;
   margin-bottom: 20px;
+  font-weight: 600;
 }
 .recordings-table {
   width: 100%;
@@ -166,7 +175,7 @@
   margin-bottom: 20px;
 }
 #deleteForm td a{
-  color: #990000;
+  color: #a20000;
     font-weight: 600;
 }
 .pagination {
@@ -186,6 +195,7 @@
 </style>
 <script>
 function pollRecordingProgress() {
+  if (window.__STOP_POLLING__) return; 
   document.querySelectorAll(".progress-wrapper").forEach(wrapper => {
     const id = wrapper.dataset.id;
 
@@ -217,7 +227,7 @@ function pollRecordingProgress() {
           // TITLE COLUMN (make clickable)
           const titleCell = row.querySelector(".title-cell");
           titleCell.innerHTML = `
-            <a href="/dashboard/recording/${id}/" class="recording-link">
+            <a href="/dashboard/recording/${data.encoded_id}/" class="recording-link">
               ${titleCell.dataset.title}
             </a>
           `;
@@ -227,7 +237,7 @@ function pollRecordingProgress() {
           if (data.pdf_url) {
             actionCell.innerHTML = `
               <a href="${data.pdf_url}" target="_blank">
-                <span style="color:red;">📄 PDF</span>
+                <span style="color:#a20000;">📄 PDF</span>
               </a>
             `;
           }
