@@ -29,7 +29,7 @@
       border-radius:16px;
       padding:40px 35px;
       width:100%;
-      max-width:420px;
+      max-width:1330px;
       text-align:center;
     }
     h1{font-size:30px;font-weight:700;margin-bottom:20px;}
@@ -72,6 +72,11 @@
 
     .bottom-text{margin-top:18px;font-size:14px;}
     a{color:#00c6ff;text-decoration:none;}
+    .subs-main{
+      display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
+    }
   </style>
 </head>
 
@@ -89,8 +94,47 @@
         <div class="message {{ message.tags }}">{{ message }}</div>
       {% endfor %}
     {% endif %}
+{% if subscriptions %}
+  <h3 style="margin:25px 0 10px;">Choose a Plan</h3>
+<div class="subs-main">
+  {% for sub in subscriptions %}
+  <div class="subs-card">
+  <div
+    style="
+      background:rgba(255,255,255,0.08);
+      border:1px solid rgba(255,255,255,0.15);
+      border-radius:12px;
+      padding:16px;
+    "
+  >
+    <strong>{{ sub.name }}</strong><br>
 
-    <form method="POST">
+    <span style="font-size:14px;color:#ccc;">
+      {{ sub.description|safe }}
+    </span><br>
+
+    <strong>
+      ${{ sub.price }}
+      {% if sub.billing_type == "monthly" %}/ month
+      {% elif sub.billing_type == "yearly" %}/ year
+      {% endif %}
+    </strong>
+
+    <button
+      type="button"
+      onclick="choosePlan('{{ sub.id }}')"
+      style="margin-top:12px;"
+    >
+      Choose Plan
+    </button>
+  </div>
+</div>
+
+  {% endfor %}
+  </div>
+{% endif %}
+
+    <!-- <form method="POST">
       {% csrf_token %}
       <input type="text" name="username" placeholder="Username" required>
       <input type="email" name="email" placeholder="Email" required>
@@ -100,7 +144,15 @@
 
     <p class="bottom-text">
       Already have an account? <a href="{% url 'login' %}">Login here</a>
-    </p>
+    </p> -->
+    
   </div>
+  <script>
+      function choosePlan(subscriptionId) {
+    // Redirect to checkout page
+    window.location.href =
+      "/dashboard/checkout/" + subscriptionId + "/";
+  }
+  </script>
 </body>
 </html>

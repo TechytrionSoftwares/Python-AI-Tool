@@ -12,7 +12,7 @@
   <button class="tab-btn" data-tab="video">Video to Text</button>
 </div>
 
-<!-- ✅ Everything below is unchanged -->
+<!--  Everything below is unchanged -->
 <!-- AUDIO TAB -->
 <div class="card-box" id="audio" style="display:block;">
   <h2 class="section-title">🎧 Upload Audio File</h2>
@@ -23,7 +23,7 @@
       <span><strong>Click or Drag & Drop</strong> to upload audio</span>
       <small style="opacity:.6;">MP3, WAV, M4A, FLAC</small>
     </label>
-    <input type="file" name="audio_file" id="audioInput" class="file-input" accept=".mp3,.wav,.m4a,.flac">
+    <input type="file" name="audio_file" id="audioInput" class="file-input" accept=".mp3,.wav,.m4a,.flac" multiple>
     <div class="selected-file-name" id="audioFileName">No file selected</div>
     <button type="submit" class="primary-btn" style="margin-top:18px;">Convert Audio</button>
   </form>
@@ -40,7 +40,7 @@
       <span><strong>Click or Drag & Drop</strong> to upload video</span>
       <small style="opacity:.6;">MP4, MOV, MKV</small>
     </label>
-    <input type="file" name="video_file" id="videoInput" class="file-input" accept="video/*">
+    <input type="file" name="video_file" id="videoInput" class="file-input" accept="video/*" multiple>
     <div class="selected-file-name" id="videoFileName">No file selected</div>
     <button type="submit" class="primary-btn" style="margin-top:18px;">Convert Video</button>
   </form>
@@ -73,7 +73,7 @@
 </div>
 
 
-<!-- ✅ Processing Overlay + Success Notification -->
+<!--  Processing Overlay + Success Notification -->
 <script>
 document.querySelectorAll("form").forEach(form => {
   form.addEventListener("submit", function (e) {
@@ -145,35 +145,6 @@ function showToast(message) {
   setTimeout(() => toast.remove(), 3000);
 }
 </script>
-<!-- {% if transcript or video_transcript %}
-<script>
-  window.addEventListener("load", () => {
-    // Remove overlay if still visible
-    const overlay = document.getElementById("processing-overlay");
-    if (overlay) overlay.remove();
-
-    // Show success toast
-    const toast = document.createElement("div");
-    toast.textContent = "✅ Processing complete! Your results are ready.";
-    Object.assign(toast.style, {
-      position: "fixed",
-      bottom: "20px",
-      right: "20px",
-      background: "#4CAF50",
-      color: "#fff",
-      padding: "10px 15px",
-      borderRadius: "8px",
-      boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-      fontSize: "14px",
-      zIndex: "10000",
-    });
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 4000);
-  });
-  
-</script>
-{% endif %} -->
-
 {% endblock %}
 
 

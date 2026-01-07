@@ -5,12 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% block title %}AI Effective Tool{% endblock %}</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
+<link rel="icon" href="https://effectivepresentations.com/wp-content/uploads/2023/03/cropped-favicon-32x32.png" sizes="32x32">
 <style>
-/* ✅ Shared Navbar */
+/* Shared Navbar */
+*{
+  font-family: "Poppins", sans-serif;
+}
 body {
   margin: 0;
-  font-family: "Inter", sans-serif;
+  font-family: "Poppins", sans-serif;
   background: #0b0e11;
   color: #fff;
   padding-top: 80px;
@@ -29,7 +35,7 @@ body {
   z-index: 1000;
 }
 .navbar .brand {
-  font-weight: 700;
+  font-weight: 500;
   color: #fff;
   font-size: 18px;
   letter-spacing: 0.5px;
@@ -37,28 +43,22 @@ body {
   align-items: center;
   gap: 10px;
 }
-.navbar .menu a {
-  color: #ddd;
-  text-decoration: none;
-  margin-left: 22px;
-  font-weight: 600;
-  transition: 0.25s;
-}
+
 .navbar .menu a:hover,
 .navbar .menu a.active {
-  color: #990000;
+  color: #a20000;
 }
 /* GLOBAL */
 *{margin:0;padding:0;box-sizing:border-box;}
 body{
   background:#0b0e11;
-  font-family:"Inter",sans-serif;
+  font-family:"Poppins", sans-serif;
   color:#fff;
   display:block;
   justify-content:center;
   align-items:flex-start;
   min-height:100vh;
-  padding-top:80px; /* ✅ more top padding for navbar */
+  padding-top:80px;
 }
 
 /* Top Navbar */
@@ -75,23 +75,16 @@ body{
   padding: 14px 28px;
   z-index: 1000;
 }
-.navbar .brand {
-  font-weight: 700;
-  color: #fff;
-  font-size: 18px;
-  letter-spacing: 0.5px;
-}
+
 .navbar .menu a {
-  color: #ddd;
+  color: #fff;
   text-decoration: none;
   margin-left: 22px;
-  font-weight: 600;
+  font-size:15px;
+  font-weight: 400;
   transition: 0.25s;
 }
-.navbar .menu a:hover,
-.navbar .menu a.active {
-  color: #990000;
-}
+
 
 /* Background Blur */
 video.background-video{
@@ -112,8 +105,8 @@ video.background-video{
 
 /* Headings */
 h1{
-  font-size:42px;
-  font-weight:800;
+  font-size:40px;
+  font-weight:700;
   margin-bottom:10px;
 }
 h1 span{color:#990000;}
@@ -319,7 +312,7 @@ button{
   <source src="https://cdn.pixabay.com/video/2023/03/22/155718-810722623_large.mp4" type="video/mp4">
 </video>
 <div class="overlay"></div>
-<!-- ✅ Common Header -->
+<!--  Common Header -->
 <nav class="navbar">
   <div class="brand"><img src="https://msgsndr-private.storage.googleapis.com/companyPhotos/d0babe0d-3b32-4b9d-8d9a-5f1b5cc9aecc.png" style="width: 70px;">AI Tool</div>
   <div class="menu">
@@ -332,7 +325,7 @@ button{
   </div>
 </nav>
 
-<!-- ✅ Page-Specific Content -->
+<!--  Page-Specific Content -->
 <main>
   {% block content %}{% endblock %}
 </main>
@@ -361,14 +354,14 @@ const audioInput = document.getElementById("audioInput");
 document.getElementById("audioLabel").addEventListener("click", () => audioInput.click());
 audioInput.addEventListener("change", () => {
   document.getElementById("audioFileName").textContent =
-    audioInput.files?.[0]?.name || "No file selected";
+    [...audioInput.files].map(f => f.name).join(", ") || "No file selected";
 });
 
 const videoInput = document.getElementById("videoInput");
 document.getElementById("videoLabel").addEventListener("click", () => videoInput.click());
 videoInput.addEventListener("change", () => {
   document.getElementById("videoFileName").textContent =
-    videoInput.files?.[0]?.name || "No file selected";
+    [...videoInput.files].map(f => f.name).join(", ") || "No file selected";
 });
 function enableDragAndDrop(labelId, inputId, fileNameId) {
   const label = document.getElementById(labelId);
@@ -377,13 +370,11 @@ function enableDragAndDrop(labelId, inputId, fileNameId) {
 
   if (!label || !input) return;
 
-  // Prevent default drag behavior
   ["dragenter", "dragover", "dragleave", "drop"].forEach(event => {
     label.addEventListener(event, e => e.preventDefault());
     label.addEventListener(event, e => e.stopPropagation());
   });
 
-  // Visual feedback
   label.addEventListener("dragover", () => {
     label.style.borderColor = "#4CAF50";
     label.style.background = "rgba(76,175,80,0.08)";
@@ -394,27 +385,27 @@ function enableDragAndDrop(labelId, inputId, fileNameId) {
     label.style.background = "";
   });
 
-  // Handle drop
   label.addEventListener("drop", e => {
     const files = e.dataTransfer.files;
     if (!files.length) return;
 
     input.files = files;
+
     if (fileName) {
-      fileName.textContent = files[0].name;
+      fileName.textContent = [...files].map(f => f.name).join(", ");
     }
 
     label.style.borderColor = "";
     label.style.background = "";
   });
 
-  // Handle manual file select
   input.addEventListener("change", () => {
     if (input.files.length && fileName) {
-      fileName.textContent = input.files[0].name;
+      fileName.textContent = [...input.files].map(f => f.name).join(", ");
     }
   });
 }
+
 
 // Enable drag & drop
 enableDragAndDrop("audioLabel", "audioInput", "audioFileName");
@@ -433,7 +424,7 @@ function closePasswordModal() {
 document.addEventListener("DOMContentLoaded", function () {
   const form = document.getElementById("passwordForm");
   form.addEventListener("submit", function (e) {
-    e.preventDefault(); // 🔥 THIS now works
+    e.preventDefault();
 
     fetch("{% url 'change_password_ajax' %}", {
       method: "POST",

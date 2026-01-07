@@ -1,0 +1,113 @@
+{% load id_filters %}
+{% include "adminpanel/header.html" %}
+<div class="layout">
+    {% include "adminpanel/sidebar.html" %}
+    <main class="main">
+            {% for message in messages %}
+            {% if "subscription" in message.tags %}
+                <p class="alert">{{ message }}</p>
+            {% endif %}
+            {% endfor %}
+    <div class="table-actions tb-act-subs">
+        <a href="{% url 'admin-create-subscription' %}" class="btn-primary">
+          + Create Subscription
+        </a>
+      </div>
+    <h2 class="top-head">Subscriptions</h2>
+
+    <div class="table-box tb-bx-subs">
+        <form method="get" class="search-box" style="margin-bottom:15px;">
+                <input
+                    type="text"
+                    name="q"
+                    placeholder="Search subscription..."
+                    value="{{ search }}"
+                >
+
+                <select name="status">
+                    <option value="">All Status</option>
+                    <option value="published" {% if status == "published" %}selected{% endif %}>Published</option>
+                    <option value="draft" {% if status == "draft" %}selected{% endif %}>Draft</option>
+                </select>
+
+                <select name="billing_type">
+                    <option value="">All Types</option>
+                    <!-- <option value="one_time" {% if billing_type == "one_time" %}selected{% endif %}>One Time</option> -->
+                    <option value="monthly" {% if billing_type == "monthly" %}selected{% endif %}>Monthly</option>
+                    <option value="yearly" {% if billing_type == "yearly" %}selected{% endif %}>Yearly</option>
+                </select>
+
+                <button type="submit" class="btn-sm btn-edit">Filter</button>
+                </form>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Price</th>
+            <th>Status</th>
+            <th>Created</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for sub in page_obj %}
+          <tr>
+            <td>{{ sub.name }}</td>
+            <td>{{ sub.get_billing_type_display }}</td>
+            <td>${{ sub.price }}</td>
+            <td>
+              {% if sub.status == "published" %}
+                <span class="badge success">Published</span>
+              {% else %}
+                <span class="badge warning">Draft</span>
+              {% endif %}
+            </td>
+            <td>{{ sub.created_at|date:"Y-m-d" }}</td>
+            <td class="actions">
+              <a href="{% url 'admin-edit-subscription' sub.id|encode_recording_id %}" class="btn-sm btn-edit" style="margin-right:8px; text-decoration: none;">
+                <i class="fa-regular fa-pen-to-square"></i>
+              </a>
+
+              <form
+                method="post"
+                action="{% url 'admin-delete-subscription' sub.id|encode_recording_id %}"
+                style="display:inline;"
+                onsubmit="return confirm('Are you sure you want to delete this subscription?');"
+              >
+                {% csrf_token %}
+                <button type="submit" class="btn-sm btn-delete" style="background: transparent;border: 0;font-size: 16px;color: #ec2232;">
+                  <i class="fa-solid fa-delete-left"></i>
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% if not page_obj %}
+        <tr>
+        <td colspan="6">No subscriptions found</td>
+        </tr>
+        {% endif %}
+
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="pagination">
+        {% if page_obj.has_previous %}
+            <a href="?page=1&q={{ search }}&status={{ status }}&billing_type={{ billing_type }}">« First</a>
+            <a href="?page={{ page_obj.previous_page_number }}&q={{ search }}&status={{ status }}&billing_type={{ billing_type }}">‹ Prev</a>
+        {% endif %}
+
+        <span>
+            Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+        </span>
+
+        {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}&q={{ search }}&status={{ status }}&billing_type={{ billing_type }}">Next ›</a>
+            <a href="?page={{ page_obj.paginator.num_pages }}&q={{ search }}&status={{ status }}&billing_type={{ billing_type }}">Last »</a>
+        {% endif %}
+        </div>
+
+    </div>
+  </main>
+</div>

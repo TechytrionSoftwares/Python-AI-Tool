@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<!-- Load Sandbox Accept.js -->
+<script src="https://jstest.authorize.net/v1/Accept.js"></script>
+
+<div class="container" style="max-width: 800px; margin: 50px auto; padding: 20px;">
+    <h1 style="text-align: center; margin-bottom: 30px;">Complete Your Payment</h1>
+    
+    {% if messages %}
+        {% for message in messages %}
+        <div style="padding: 15px; margin-bottom: 20px; border-radius: 5px; 
+                    background: {% if message.tags == 'error' %}#fee; border: 1px solid #fcc;{% else %}#eff; border: 1px solid #cfc;{% endif %}">
+            {{ message }}
+        </div>
+        {% endfor %}
+    {% endif %}
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+        <!-- Order Summary -->
+        <div>
+            <h2 style="margin-bottom: 20px;">Order Summary</h2>
+            <div style="background: #061321; padding: 20px; border-radius: 10px;">
+                <h3 style="color: #2563eb; margin: 0 0 10px 0;">{{ subscription.name }}</h3>
+                {{ subscription.description|safe }}
+                
+                <div style="border-top: 2px solid #ddd; padding-top: 15px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                        <span>Billing Cycle:</span>
+                        <strong>{{ subscription.billing_type|title }}</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                        <span>Amount:</span>
+                        <strong style="font-size: 24px; color: #2563eb;">${{ subscription.price }}</strong>
+                    </div>
+                    <div style="margin-top: 15px; padding: 15px; background: #eff6ff; border-radius: 5px;">
+                        <small style="color: #1e40af;">
+                            ✓ Recurring billing - Cancel anytime<br>
+                            ✓ Next billing: {{ subscription.billing_type }} from today
+                        </small>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="margin-top: 20px; background: #061321; padding: 20px; border-radius: 10px; border: 1px solid #ddd;">
+                <h3 style="margin: 0 0 10px 0;">Account Details</h3>
+                <p style="margin: 5px 0;"><strong>Username:</strong> {{ pending_user.username }}</p>
+                <p style="margin: 5px 0;"><strong>Email:</strong> {{ pending_user.email }}</p>
+            </div>
+        </div>
+        
+        <!-- Payment Form -->
+        <div>
+            <h2 style="margin-bottom: 20px;">Payment Information</h2>
+            <form id="paymentForm" method="POST" style="background: #061321; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                {% csrf_token %}
+                <h2>Account Information</h2>
+
+                    <div style="background:#061321;padding:20px;border-radius:10px;margin-bottom:20px;">
+                    <label>Username</label>
+                    <input type="text" name="username" required>
+
+                    <label>Email</label>
+                    <input type="email" name="email" required>
+
+                    <label>Password</label>
+                    <input type="password" name="password" required>
+                    </div>
+
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Card Number</label>
+                    <input type="text" id="cardNumber" placeholder="4007000000027" maxlength="16"
+                           style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px;">
+                    <small style="color: #666;">Test: 4007000000027</small>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 20px;">
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Month</label>
+                        <input type="text" id="expMonth" placeholder="12" maxlength="2"
+                               style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px;">
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Year</label>
+                        <input type="text" id="expYear" placeholder="25" maxlength="2"
+                               style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px;">
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">CVV</label>
+                        <input type="text" id="cardCode" placeholder="123" maxlength="4"
+                               style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px;">
+                    </div>
+                </div>
+                
+                <input type="hidden" name="dataValue" id="dataValue">
+                <input type="hidden" name="dataDescriptor" id="dataDescriptor">
+                
+                <button type="button" onclick="sendPaymentData()" id="payButton"
+                        style="width: 100%; padding: 15px; background: #2563eb; color: white; border: none; 
+                               border-radius: 5px; font-size: 18px; font-weight: bold; cursor: pointer;">
+                    Complete Payment
+                </button>
+                
+                <div id="loading" style="display: none; text-align: center; margin-top: 15px; color: #2563eb;">
+                    <span style="font-size: 18px;">⏳ Processing payment...</span>
+                </div>
+                
+                <p style="text-align: center; margin-top: 15px; font-size: 12px; color: #666;">
+                    🔒 Secure payment processed by Authorize.Net
+                </p>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+const AUTH_LOGIN_ID = "{{ login_id }}";
+const AUTH_CLIENT_KEY = "{{ client_key }}";
+
+console.log("=== Payment Configuration ===");
+console.log("Login ID:", AUTH_LOGIN_ID);
+console.log("Client Key:", AUTH_CLIENT_KEY.substring(0, 20) + "...");
+
+function sendPaymentData() {
+    const payButton = document.getElementById('payButton');
+    const loading = document.getElementById('loading');
+    
+    // Validate form
+    const cardNumber = document.getElementById("cardNumber").value.replace(/\s/g, '');
+    const expMonth = document.getElementById("expMonth").value;
+    const expYear = document.getElementById("expYear").value;
+    const cardCode = document.getElementById("cardCode").value;
+    
+    if (!cardNumber || !expMonth || !expYear || !cardCode) {
+        alert("Please fill in all payment fields");
+        return;
+    }
+    
+    // Disable button
+    payButton.disabled = true;
+    payButton.style.background = "#94a3b8";
+    loading.style.display = 'block';
+    
+    const authData = {
+        clientKey: AUTH_CLIENT_KEY,
+        apiLoginID: AUTH_LOGIN_ID
+    };
+
+    const cardData = {
+        cardNumber: cardNumber,
+        month: expMonth,
+        year: expYear,
+        cardCode: cardCode
+    };
+
+    const secureData = {
+        authData: authData,
+        cardData: cardData
+    };
+
+    console.log("=== Sending to Accept.js ===");
+    Accept.dispatchData(secureData, responseHandler);
+}
+
+function responseHandler(response) {
+    console.log("=== Accept.js Response ===");
+    console.log(response);
+    
+    const payButton = document.getElementById('payButton');
+    const loading = document.getElementById('loading');
+    
+    if (response.messages.resultCode === "Ok") {
+        console.log("✓ Payment token received successfully");
+        document.getElementById("dataValue").value = response.opaqueData.dataValue;
+        document.getElementById("dataDescriptor").value = response.opaqueData.dataDescriptor;
+        loading.innerHTML = '<span style="font-size: 18px; color: #10b981;">✓ Creating subscription...</span>';
+        document.getElementById("paymentForm").submit();
+    } else {
+        // Re-enable button on error
+        payButton.disabled = false;
+        payButton.style.background = "#2563eb";
+        loading.style.display = 'none';
+        
+        const errorMsg = response.messages.message[0].text;
+        console.error("✗ Error:", errorMsg);
+        alert("Payment Error: " + errorMsg);
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,54 @@
+{% load static %}
+{% include "adminpanel/header.html" %}
+<div class="layout">
+    {% include "adminpanel/sidebar.html" %}
+    <main class="main">
+        {% for message in messages %}
+            {% if "user" in message.tags %}
+                <p class="alert">{{ message }}</p>
+            {% endif %}
+            {% endfor %}
+        <h2 class="top-head">Create User</h2>
+        <form method="post" class="form-box" id="createUserForm">
+    {% csrf_token %}
+
+    <label>Username</label>
+    <input type="text" name="username" required>
+
+    <label>Email</label>
+    <input type="email" name="email" required>
+    <!-- Password -->
+    <label>Password</label>
+    <div class="password-wrapper">
+        <input type="password" name="password" id="password" required>
+        <i class="fa-solid fa-eye toggle-eye"
+       data-target="password"></i>
+    </div>
+    <small id="passwordHelp" class="error-text"></small>
+
+    <!-- Confirm Password -->
+    <label>Confirm Password</label>
+    <div class="password-wrapper">
+        <input type="password" name="confirm_password" id="confirm_password" required>
+        <i class="fa-solid fa-eye toggle-eye"
+       data-target="confirm_password"></i>
+    </div>
+    <small id="confirmHelp" class="error-text"></small>
+
+    <label>Role</label>
+    <select name="role" required>
+        <option value="">Select role</option>
+        <option value="admin">Admin</option>
+        {% if request.user.is_superuser %}
+            <option value="superadmin">Superadmin</option>
+        {% endif %}
+    </select>
+
+    <button type="submit">Create User</button>
+</form>
+<script src="{% static 'adminpanel/js/form.js' %}"></script>
+    </main>
+</div>
+
+</body>
+</html>

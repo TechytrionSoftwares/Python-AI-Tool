@@ -14,7 +14,6 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.lib import colors
 from django.utils import timezone
-# import language_tool_python  # ✅ Added for grammar analysis
 from difflib import ndiff
 import html
 import whisper
@@ -342,7 +341,7 @@ def generate_inline_html_from_claude(original_text: str, errors: List[Dict]) -> 
         if not original or not correction or original == correction:
             continue
 
-        # 🔥 FIND ALL OCCURRENCES (CRITICAL FIX)
+        #  FIND ALL OCCURRENCES (CRITICAL FIX)
         for match in re.finditer(re.escape(original), result):
             positioned_errors.append({
                 "pos": match.start(),
@@ -353,7 +352,7 @@ def generate_inline_html_from_claude(original_text: str, errors: List[Dict]) -> 
                 "explanation": error.get("explanation", "")
             })
 
-    # 🔥 Replace from END to START (prevents index shifting)
+    #  Replace from END to START (prevents index shifting)
     positioned_errors.sort(key=lambda x: x["pos"], reverse=True)
 
     for err in positioned_errors:
@@ -523,7 +522,7 @@ Return ONLY valid JSON:
         }
 
 # -------------------------------------------------------------------
-# ✅ UPDATED — PDF GENERATION (with analysis sections)
+#  UPDATED — PDF GENERATION (with analysis sections)
 # -------------------------------------------------------------------
 def generate_pdf(transcript_text, filler_analysis=None, pacing_analysis=None, grammar_inline=None):
     """

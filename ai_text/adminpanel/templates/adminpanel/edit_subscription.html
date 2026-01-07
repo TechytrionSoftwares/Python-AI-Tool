@@ -1,0 +1,91 @@
+{% include "adminpanel/header.html" %}
+
+<div class="layout">
+  {% include "adminpanel/sidebar.html" %}
+
+  <main class="main">
+    <h2 class="top-head">Edit Subscription</h2>
+
+    <div class="table-box">
+      <form method="post" class="form-box" id="subscription-form">
+        {% csrf_token %}
+
+        <div class="form-row">
+          <label>Name</label>
+          <input type="text" name="name" value="{{ subscription.name }}" required>
+        </div>
+
+        <div class="form-row">
+            <label>Description</label>
+
+            <!-- Store existing HTML safely (hidden) -->
+            <div id="existing-description" style="display:none;">
+                {{ subscription.description|safe }}
+            </div>
+
+            <!-- Empty editor container -->
+            <div id="editor" style="height:300px;"></div>
+
+            <input type="hidden" name="description" id="id_description">
+            </div>
+
+
+        <div class="form-row">
+          <label>Price</label>
+          <input type="number" step="0.01" name="price" value="{{ subscription.price }}" required>
+        </div>
+
+        <div class="form-row">
+          <label>Billing Type</label>
+          <select name="billing_type">
+            <!-- <option value="one_time" {% if subscription.billing_type == "one_time" %}selected{% endif %}>One Time</option> -->
+            <option value="monthly" {% if subscription.billing_type == "monthly" %}selected{% endif %}>Monthly</option>
+            <option value="yearly" {% if subscription.billing_type == "yearly" %}selected{% endif %}>Yearly</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label>Status</label>
+          <select name="status">
+            <option value="draft" {% if subscription.status == "draft" %}selected{% endif %}>Draft</option>
+            <option value="published" {% if subscription.status == "published" %}selected{% endif %}>Published</option>
+          </select>
+        </div>
+
+        <button class="btn-primary">Update Subscription</button>
+      </form>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+
+    var quill = new Quill('#editor', {
+      theme: 'snow',
+      modules: {
+        toolbar: [
+          ['bold', 'italic', 'underline'],
+          [{ list: 'ordered' }, { list: 'bullet' }],
+          ['link', 'code-block'],
+          ['clean']
+        ]
+      }
+    });
+
+    //  LOAD EXISTING DESCRIPTION INTO QUILL
+    var existingContent = document.getElementById('existing-description').innerHTML.trim();
+    if (existingContent !== "") {
+      quill.root.innerHTML = existingContent;
+    }
+
+    //  SAVE UPDATED CONTENT
+    document.getElementById('subscription-form').onsubmit = function () {
+      document.getElementById('id_description').value =
+        quill.root.innerHTML;
+    };
+
+  });
+</script>
+
