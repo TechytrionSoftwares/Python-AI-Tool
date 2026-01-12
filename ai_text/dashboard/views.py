@@ -19,6 +19,8 @@ from django.http import HttpResponseNotFound
 import html
 from dashboard.utils.roles import is_admin
 from decimal import Decimal
+from dashboard.utils.file_validators import validate_audio_video_file
+from dashboard.utils.subscription import has_active_access
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -46,7 +48,6 @@ from .utils.s3_bucket import upload_to_s3
 from adminpanel.models import Subscription
 from .tasks import process_recording_task
 
-from adminpanel.models import Subscription
 from .models import Payment, UserSubscription
 from datetime import timedelta
 import requests
@@ -134,11 +135,18 @@ HEDGING_WORDS = [
     "supposed", "so-called", "purported"
 ]
 
+def calculate_expires_at(started_at, billing_type):
+    if billing_type == "monthly":
+        return started_at + relativedelta(months=1)
+    elif billing_type == "yearly":
+        return started_at + relativedelta(years=1)
+    return None
+
+
 def checkout(request, subscription_id):
     """
     Handles Authorize.Net subscription checkout using Accept.js (ARB) with Customer Profiles
     """
-
     import json
     import xmltodict
     from datetime import timedelta
@@ -154,6 +162,20 @@ def checkout(request, subscription_id):
     # GET → Show checkout page
     # -------------------------------------------------
     if request.method == "GET":
+        if request.user.is_authenticated:
+            existing_sub = UserSubscription.objects.filter(
+                user=request.user,
+                active=True
+            ).first()
+
+            if existing_sub:
+                messages.warning(
+                    request,
+                    f"You already have an active {existing_sub.subscription.name} subscription. "
+                    f"Go to Settings to manage your plan."
+                )
+                return redirect("settings")
+
         return render(
             request,
             "checkout.html",
@@ -167,30 +189,42 @@ def checkout(request, subscription_id):
     # -------------------------------------------------
     # POST → Process payment
     # -------------------------------------------------
-    username = request.POST.get("username")
-    email = request.POST.get("email")
-    password = request.POST.get("password")
 
-    if not all([username, email, password]):
-        messages.error(request, "All fields are required.")
-        return redirect("checkout", subscription_id=subscription.id)
+    # Resolve user
+    if request.user.is_authenticated:
+        user = request.user
+        if UserSubscription.objects.filter(user=user, active=True).exists():
+            messages.error(
+                request,
+                "You already have an active subscription. "
+                "Please manage it from Settings."
+            )
+            return redirect("settings")
+    else:
+        username = request.POST.get("username")
+        email = request.POST.get("email")
+        password = request.POST.get("password")
 
-    # Block existing active subscription
-    existing_user = User.objects.filter(email=email).first()
-    if existing_user and UserSubscription.objects.filter(
-        user=existing_user, active=True
-    ).exists():
-        messages.error(
-            request,
-            "This email already has an active subscription. Please log in."
-        )
-        return redirect("checkout", subscription_id=subscription.id)
+        if not all([username, email, password]):
+            messages.error(request, "All fields are required.")
+            return redirect("checkout", subscription_id=subscription.id)
 
-    request.session["pending_user"] = {
-        "username": username,
-        "email": email,
-        "password": password,
-    }
+        existing_user = User.objects.filter(email=email).first()
+        if existing_user and UserSubscription.objects.filter(
+            user=existing_user, active=True
+        ).exists():
+            messages.error(
+                request,
+                "This email already has an active subscription. Please log in."
+            )
+            return redirect("login")
+
+        request.session["pending_user"] = {
+            "username": username,
+            "email": email,
+            "password": password,
+        }
+        user = None
 
     data_value = request.POST.get("dataValue")
     data_descriptor = request.POST.get("dataDescriptor")
@@ -199,10 +233,17 @@ def checkout(request, subscription_id):
         messages.error(request, "Payment token missing. Please try again.")
         return redirect("checkout", subscription_id=subscription.id)
 
-    pending_user = request.session.get("pending_user")
-    if not pending_user:
-        messages.error(request, "Session expired. Please start again.")
-        return redirect("register")
+    # User identity for Authorize.Net
+    if request.user.is_authenticated:
+        user_email = request.user.email
+        user_name = request.user.username
+    else:
+        pending_user = request.session.get("pending_user")
+        if not pending_user:
+            messages.error(request, "Session expired. Please start again.")
+            return redirect("register")
+        user_email = pending_user["email"]
+        user_name = pending_user["username"]
 
     # -------------------------------------------------
     # STEP 1: Create Customer Profile
@@ -216,11 +257,11 @@ def checkout(request, subscription_id):
                 },
                 "profile": {
                     "merchantCustomerId": str(int(timezone.now().timestamp()))[:20],
-                    "email": pending_user["email"],
+                    "email": user_email,
                     "paymentProfiles": {
                         "customerType": "individual",
                         "billTo": {
-                            "firstName": pending_user["username"],
+                            "firstName": user_name,
                             "lastName": "User",
                         },
                         "payment": {
@@ -235,96 +276,59 @@ def checkout(request, subscription_id):
             }
         }
 
-        print("=" * 80)
-        print("CREATING CUSTOMER PROFILE...")
-        print("=" * 80)
-
         profile_response = requests.post(
             settings.AUTHORIZE_NET_ENDPOINT,
             json=profile_payload,
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
             timeout=60,
         )
 
-        if profile_response.status_code != 200:
-            print(f"❌ Profile Creation HTTP Error: {profile_response.status_code}")
-            messages.error(request, f"Payment gateway error (HTTP {profile_response.status_code}).")
-            return redirect("checkout", subscription_id=subscription.id)
-
         raw_profile_text = profile_response.content.decode("utf-8-sig").strip()
-        print("RAW PROFILE RESPONSE:")
-        print(raw_profile_text)
+        profile_data = (
+            json.loads(raw_profile_text)
+            if raw_profile_text.startswith("{")
+            else xmltodict.parse(raw_profile_text)
+        )
 
-        # Parse profile response
-        if raw_profile_text.startswith("{"):
-            profile_data = json.loads(raw_profile_text)
-        elif raw_profile_text.startswith("<"):
-            profile_data = xmltodict.parse(raw_profile_text)
-        else:
-            messages.error(request, "Invalid profile response format.")
-            return redirect("checkout", subscription_id=subscription.id)
+        profile_result = profile_data.get(
+            "createCustomerProfileResponse", profile_data
+        )
 
-        print("PARSED PROFILE DATA:")
-        print(json.dumps(profile_data, indent=2, default=str))
-
-        # Extract profile response
-        profile_result = profile_data.get("createCustomerProfileResponse", profile_data)
-        
         if profile_result.get("messages", {}).get("resultCode") != "Ok":
-            error_messages = profile_result.get("messages", {}).get("message", [])
-            if isinstance(error_messages, list):
-                error_msg = error_messages[0].get("text", "Profile creation failed")
-            else:
-                error_msg = error_messages.get("text", "Profile creation failed")
-            
-            print(f"❌ Profile Creation Failed: {error_msg}")
-            messages.error(request, f"Payment setup failed: {error_msg}")
+            error = profile_result["messages"]["message"]
+            error_text = error[0]["text"] if isinstance(error, list) else error["text"]
+            messages.error(request, f"Payment setup failed: {error_text}")
             return redirect("checkout", subscription_id=subscription.id)
 
-        # Extract Customer Profile and Payment Profile IDs
         customer_profile_id = profile_result.get("customerProfileId")
-        customer_payment_profile_id_list = profile_result.get("customerPaymentProfileIdList", [])
-        
-        if isinstance(customer_payment_profile_id_list, list) and len(customer_payment_profile_id_list) > 0:
-            customer_payment_profile_id = customer_payment_profile_id_list[0]
-        elif isinstance(customer_payment_profile_id_list, str):
-            customer_payment_profile_id = customer_payment_profile_id_list
-        else:
-            customer_payment_profile_id = None
-
-        print(f"✓ Customer Profile ID: {customer_profile_id}")
-        print(f"✓ Payment Profile ID: {customer_payment_profile_id}")
+        payment_ids = profile_result.get("customerPaymentProfileIdList", [])
+        customer_payment_profile_id = (
+            payment_ids[0] if isinstance(payment_ids, list) else payment_ids
+        )
 
         if not customer_profile_id or not customer_payment_profile_id:
-            print("❌ Missing profile IDs")
-            messages.error(request, "Payment profile creation incomplete.")
+            messages.error(request, "Payment profile creation failed.")
             return redirect("checkout", subscription_id=subscription.id)
 
-    except Exception as e:
-        print(f"❌ Profile Creation Error: {e}")
-        import traceback
-        traceback.print_exc()
+    except Exception:
         messages.error(request, "Unable to create payment profile.")
         return redirect("checkout", subscription_id=subscription.id)
 
     # -------------------------------------------------
-    # STEP 2: Create ARB Subscription using Customer Profile
+    # STEP 2: Create ARB Subscription
     # -------------------------------------------------
+    interval_length = 1 if subscription.billing_type == "monthly" else 12
+
     payload = {
         "ARBCreateSubscriptionRequest": {
             "merchantAuthentication": {
                 "name": settings.AUTHORIZE_NET_LOGIN_ID,
                 "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
             },
-            "refId": f"ref{timezone.now().timestamp()}",
             "subscription": {
                 "name": f"{subscription.name} Subscription",
                 "paymentSchedule": {
                     "interval": {
-                        "length": 12 if subscription.billing_type == "yearly" else 1,
+                        "length": interval_length,
                         "unit": "months",
                     },
                     "startDate": (timezone.now().date() + timedelta(days=1)).isoformat(),
@@ -339,138 +343,65 @@ def checkout(request, subscription_id):
         }
     }
 
-    # -------------------------------------------------
-    # Send request to Authorize.Net
-    # -------------------------------------------------
-    try:
-        print("=" * 80)
-        print("CREATING ARB SUBSCRIPTION...")
-        print("=" * 80)
-        
-        response = requests.post(
-            settings.AUTHORIZE_NET_ENDPOINT,
-            json=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-            timeout=60,
-        )
+    response = requests.post(
+        settings.AUTHORIZE_NET_ENDPOINT,
+        json=payload,
+        timeout=60,
+    )
 
-        if response.status_code != 200:
-            print(f"❌ HTTP Error: {response.status_code}")
-            messages.error(request, f"Payment gateway error (HTTP {response.status_code}).")
-            return redirect("checkout", subscription_id=subscription.id)
+    parsed = json.loads(response.content.decode("utf-8-sig"))
+    result = parsed.get("ARBCreateSubscriptionResponse", parsed)
 
-        raw_text = response.content.decode("utf-8-sig").strip()
-        
-        print("RAW AUTHORIZE.NET RESPONSE:")
-        print(raw_text)
-
-        # Parse JSON or XML
-        if raw_text.startswith("{"):
-            parsed_data = json.loads(raw_text)
-        elif raw_text.startswith("<"):
-            parsed_data = xmltodict.parse(raw_text)
-        else:
-            messages.error(request, "Unexpected response format.")
-            return redirect("checkout", subscription_id=subscription.id)
-
-        print("PARSED SUBSCRIPTION DATA:")
-        print(json.dumps(parsed_data, indent=2, default=str))
-
-    except Exception as e:
-        print(f"❌ Subscription Creation Error: {e}")
-        import traceback
-        traceback.print_exc()
-        messages.error(request, f"Subscription creation failed: {e}")
+    if result.get("messages", {}).get("resultCode") != "Ok":
+        messages.error(request, "Subscription creation failed.")
         return redirect("checkout", subscription_id=subscription.id)
 
-    # -------------------------------------------------
-    # Handle response
-    # -------------------------------------------------
-    subscription_response = parsed_data.get("ARBCreateSubscriptionResponse", parsed_data)
-
-    if not subscription_response:
-        messages.error(request, "Invalid response structure.")
-        return redirect("checkout", subscription_id=subscription.id)
-
-    response_messages = subscription_response.get("messages", {})
-    result_code = response_messages.get("resultCode")
-    
-    if result_code != "Ok":
-        message_obj = response_messages.get("message", {})
-        
-        if isinstance(message_obj, list):
-            error_msg = message_obj[0].get("text", "Unknown error")
-        else:
-            error_msg = message_obj.get("text", "Unknown error")
-        
-        print(f"❌ Subscription Failed: {error_msg}")
-        messages.error(request, f"Subscription failed: {error_msg}")
-        return redirect("checkout", subscription_id=subscription.id)
-
-    authorize_subscription_id = subscription_response.get("subscriptionId")
-    
+    authorize_subscription_id = result.get("subscriptionId")
     if not authorize_subscription_id:
         messages.error(request, "Subscription ID missing.")
         return redirect("checkout", subscription_id=subscription.id)
 
-    print(f"✓ Success! Subscription ID: {authorize_subscription_id}")
-
     # -------------------------------------------------
-    # Create user
+    # Create user if needed
     # -------------------------------------------------
-    try:
+    if not request.user.is_authenticated:
+        pending_user = request.session.get("pending_user")
         user = User.objects.create_user(
             username=pending_user["username"],
             email=pending_user["email"],
             password=pending_user["password"],
         )
-        print(f"✓ User created: {user.username}")
-    except Exception as e:
-        print(f"❌ User creation error: {e}")
-        messages.error(request, "Account creation failed.")
-        return redirect("register")
 
     # -------------------------------------------------
-    # Save subscription + payment WITH PROFILE IDs
+    # SAVE SUBSCRIPTION (CRITICAL FIX HERE)
     # -------------------------------------------------
-    try:
-        UserSubscription.objects.create(
-            user=user,
-            subscription=subscription,
-            active=True,
-            authorize_subscription_id=authorize_subscription_id,
-            customer_profile_id=customer_profile_id,
-            customer_payment_profile_id=customer_payment_profile_id,
-        )
-        print("✓ UserSubscription created with profile IDs")
+    now = timezone.now()
 
-        Payment.objects.create(
-            user=user,
-            subscription=subscription,
-            amount=subscription.price,
-            transaction_id=authorize_subscription_id,
-            status="success",
-            response_code="OK",
-        )
-        print("✓ Payment record created")
+    UserSubscription.objects.create(
+        user=user,
+        subscription=subscription,
+        active=True,
+        started_at=now,  # ✅ FIX
+        expires_at=calculate_expires_at(now, subscription.billing_type),
+        authorize_subscription_id=authorize_subscription_id,
+        customer_profile_id=customer_profile_id,
+        customer_payment_profile_id=customer_payment_profile_id,
+    )
 
-    except Exception as e:
-        print(f"❌ Database error: {e}")
-        import traceback
-        traceback.print_exc()
-        messages.error(request, "Error saving subscription.")
-        return redirect("checkout", subscription_id=subscription.id)
+    Payment.objects.create(
+        user=user,
+        subscription=subscription,
+        amount=subscription.price,
+        transaction_id=authorize_subscription_id,  # kept for compatibility
+        status="success",
+        response_code="OK",
+    )
 
     request.session.pop("pending_user", None)
 
-    messages.success(
-        request,
-        "Subscription activated successfully! You can now log in."
-    )
-    return redirect("login")
+    messages.success(request, "Subscription activated successfully!")
+    return redirect("settings" if request.user.is_authenticated else "login")
+
 # PRACTICE TAB (default dashboard)
 @login_required
 def practice_view(request):
@@ -515,6 +446,9 @@ def change_password_ajax(request):
 
 
 # @login_required
+from datetime import timedelta
+from django.utils import timezone
+
 def settings_view(request):
     active_subscription = (
         UserSubscription.objects
@@ -545,7 +479,6 @@ def settings_view(request):
         .order_by("-created_at")
     )
 
-    # ✅ THIS IS THE KEY PART
     has_successful_payment = False
     if active_subscription:
         has_successful_payment = Payment.objects.filter(
@@ -556,31 +489,48 @@ def settings_view(request):
 
     available_plan = Subscription.objects.first()
 
-    all_plans = []
+    #  FETCH ALL PLANS (unchanged logic)
+    all_plans = Subscription.objects.filter(status="published").order_by("price")
     if active_subscription:
-        all_plans = Subscription.objects.filter(
-            status='published',
+        all_plans = all_plans.filter(
             billing_type=active_subscription.subscription.billing_type
-        ).order_by('price')
+        )
+
+    #  NEW: 48-hour restriction logic (NON-BREAKING)
+    can_manage_subscription = False
+    hours_remaining = None
+
+    if active_subscription and active_subscription.started_at:
+        activation_time = active_subscription.started_at + timedelta(hours=48)
+        if timezone.now() >= activation_time:
+            can_manage_subscription = True
+        else:
+            hours_remaining = int(
+                (activation_time - timezone.now()).total_seconds() // 3600
+            )
 
     return render(request, "settings.html", {
         "user": request.user,
         "active_subscription": active_subscription,
-        "has_successful_payment": has_successful_payment, 
+        "has_successful_payment": has_successful_payment,
         "next_billing_date": next_billing_date,
         "payments": payments,
         "started_at": timezone.now(),
         "available_plan": available_plan,
         "all_plans": all_plans,
+
+        #  NEW (safe additions)
+        "can_manage_subscription": can_manage_subscription,
+        "hours_remaining": hours_remaining,
     })
+
 
 import logging
 logger = logging.getLogger(__name__)
 
+@login_required
+@require_POST
 def resume_subscription(request):
-    if request.method != "POST":
-        return JsonResponse({"error": "Invalid request"}, status=400)
-
     subscription = (
         UserSubscription.objects
         .filter(
@@ -598,7 +548,7 @@ def resume_subscription(request):
             status=400
         )
 
-    #  We MUST have stored profile IDs
+    # Must have payment profiles
     if not subscription.customer_profile_id or not subscription.customer_payment_profile_id:
         return JsonResponse(
             {
@@ -610,20 +560,22 @@ def resume_subscription(request):
             status=400
         )
 
-    #  SAFE start date → prevents double charge
+    # Safety: expires_at MUST exist
     if not subscription.expires_at:
+        logger.error(
+            f"Resume failed: expires_at missing for user {subscription.user_id}"
+        )
         return JsonResponse(
-            {"error": "Subscription expiry date missing"},
+            {"error": "Subscription expiry date missing. Please contact support."},
             status=400
         )
 
+    # Authorize.Net should start billing AFTER current period ends
     start_date = subscription.expires_at.date()
 
     # ------------------------------------------------
-    # Create NEW Authorize.Net subscription
+    # Determine Authorize.Net interval
     # ------------------------------------------------
-    # Determine interval for Authorize.Net
-    # NOTE: Authorize.Net only accepts "days" or "months", not "years"
     if subscription.subscription.billing_type == "monthly":
         interval_length = 1
         interval_unit = "months"
@@ -631,10 +583,9 @@ def resume_subscription(request):
         interval_length = 12
         interval_unit = "months"
     else:
-        # Default to monthly
         interval_length = 1
         interval_unit = "months"
-    
+
     payload = {
         "ARBCreateSubscriptionRequest": {
             "merchantAuthentication": {
@@ -669,34 +620,25 @@ def resume_subscription(request):
             timeout=30,
         )
 
-        logger.info(f"Response status: {resp.status_code}")
-        
         resp.encoding = "utf-8-sig"
         data = json.loads(resp.text)
 
         logger.info(f"Authorize.Net RESUME response: {json.dumps(data, indent=2)}")
 
-        # Handle response with or without wrapper
         result = data.get("ARBCreateSubscriptionResponse", data)
         messages = result.get("messages", {})
 
         if messages.get("resultCode") != "Ok":
             error_messages = messages.get("message", [])
-            
-            # Handle both list and single dict
             if isinstance(error_messages, dict):
                 error_messages = [error_messages]
-            
-            if error_messages:
-                error_text = "; ".join(
-                    f"{m.get('code', 'N/A')}: {m.get('text', 'Unknown error')}"
-                    for m in error_messages
-                )
-            else:
-                error_text = f"Unknown payment gateway error. Full response: {json.dumps(data)}"
+
+            error_text = "; ".join(
+                f"{m.get('code', 'N/A')}: {m.get('text', 'Unknown error')}"
+                for m in error_messages
+            ) if error_messages else "Unknown payment gateway error"
 
             logger.error(f"Authorize.Net resume failed: {error_text}")
-
             return JsonResponse(
                 {"error": f"Unable to resume subscription: {error_text}"},
                 status=400
@@ -705,24 +647,24 @@ def resume_subscription(request):
         new_subscription_id = result.get("subscriptionId")
 
         if not new_subscription_id:
-            logger.error(f"No subscription ID in response. Full response: {json.dumps(data)}")
+            logger.error(f"No subscriptionId returned: {json.dumps(data)}")
             return JsonResponse(
                 {"error": "No subscription ID returned from payment gateway"},
                 status=400
             )
 
-        logger.info(f"✓ Successfully created new subscription: {new_subscription_id}")
+        logger.info(f"✓ Created new ARB subscription: {new_subscription_id}")
 
     except json.JSONDecodeError as e:
         logger.error(f"JSON decode error: {str(e)}")
         return JsonResponse(
-            {"error": f"Invalid response from payment gateway: {str(e)}"},
+            {"error": "Invalid response from payment gateway"},
             status=500
         )
     except requests.RequestException as e:
         logger.error(f"Request error: {str(e)}")
         return JsonResponse(
-            {"error": f"Failed to connect to payment gateway: {str(e)}"},
+            {"error": "Failed to connect to payment gateway"},
             status=500
         )
     except Exception as e:
@@ -730,18 +672,30 @@ def resume_subscription(request):
         return JsonResponse({"error": str(e)}, status=500)
 
     # ------------------------------------------------
-    # Update LOCAL DB
+    # UPDATE LOCAL DB (CRITICAL FIX)
     # ------------------------------------------------
+    now = timezone.now()
+
     subscription.authorize_subscription_id = new_subscription_id
     subscription.cancel_at_period_end = False
+    subscription.started_at = now
+    subscription.expires_at = calculate_expires_at(
+        now,
+        subscription.subscription.billing_type
+    )
+
     subscription.save(
         update_fields=[
             "authorize_subscription_id",
             "cancel_at_period_end",
+            "started_at",
+            "expires_at",
         ]
     )
 
-    logger.info(f"✓ Subscription resumed successfully for user {request.user.username}")
+    logger.info(
+        f"✓ Subscription resumed successfully for user {request.user.username}"
+    )
 
     return JsonResponse({
         "success": True,
@@ -750,6 +704,7 @@ def resume_subscription(request):
             "Billing will continue after the current period ends."
         )
     })
+
 
 @login_required
 def delete_recordings(request):
@@ -1240,11 +1195,11 @@ def calculate_confidence_score(filler_data, pacing_data):
 
 @login_required
 def speech_tx(request):
-    #  GET → show page
+    # GET → show page
     if request.method == "GET":
         return render(request, "index3.html")
 
-    #  POST → MULTI file AJAX upload
+    # POST → MULTI file AJAX upload
     if request.method == "POST":
         audio_files = request.FILES.getlist("audio_file")
         video_files = request.FILES.getlist("video_file")
@@ -1255,39 +1210,81 @@ def speech_tx(request):
             return JsonResponse({"error": "No files uploaded"}, status=400)
 
         created_recordings = []
+        rejected_files = []
 
         for file in files:
-            # detect type
-            file_type = "audio" if "audio" in file.content_type else "video"
+            # ✅ VALIDATE FILE BEFORE PROCESSING
+            is_valid, error_msg, file_type = validate_audio_video_file(file)
+            
+            if not is_valid:
+                rejected_files.append({
+                    'filename': file.name,
+                    'error': error_msg
+                })
+                logger.warning(f"File rejected: {file.name} - {error_msg}")
+                continue  # Skip this file
+            
+            # File is valid, proceed with upload
+            try:
+                # Create DB row
+                recording = Recording.objects.create(
+                    user=request.user,
+                    title=file.name,
+                    status="uploading",
+                    file_type=file_type,
+                )
 
-            # create DB row
-            recording = Recording.objects.create(
-                user=request.user,
-                title=f"Recording {timezone.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                status="uploading",
-                file_type=file_type,
-            )
+                # Upload to S3
+                s3_key = f"uploads/{file_type}/{recording.id}_{file.name}"
+                s3_url = upload_to_s3(file, s3_key)
 
-            # upload to S3
-            s3_key = f"uploads/{file_type}/{recording.id}_{file.name}"
-            s3_url = upload_to_s3(file, s3_key)
+                if not s3_url:
+                    rejected_files.append({
+                        'filename': file.name,
+                        'error': 'Failed to upload to storage'
+                    })
+                    recording.delete()  # Clean up database entry
+                    continue
 
-            # update recording
-            recording.audio_url = s3_url
-            recording.status = "processing"
-            recording.progress = 10
-            recording.save()
+                # Update recording
+                recording.audio_url = s3_url
+                recording.status = "processing"
+                recording.progress = 10
+                recording.save()
 
-            #  enqueue background job (ONE TASK PER FILE)
-            process_recording_task.delay(recording.id)
+                # Enqueue background job
+                process_recording_task.delay(recording.id)
 
-            created_recordings.append(recording.id)
+                created_recordings.append({
+                    'id': recording.id,
+                    'filename': file.name
+                })
+                
+                logger.info(f"✓ File accepted and queued: {file.name}")
+                
+            except Exception as e:
+                logger.error(f"Error processing {file.name}: {str(e)}")
+                rejected_files.append({
+                    'filename': file.name,
+                    'error': str(e)
+                })
 
-        return JsonResponse({
-            "success": True,
-            "recording_ids": created_recordings,
-            "count": len(created_recordings)
-        })
+        # Prepare response
+        response_data = {
+            "success": len(created_recordings) > 0,
+            "recording_ids": [r['id'] for r in created_recordings],
+            "count": len(created_recordings),
+            "accepted": created_recordings,
+            "rejected": rejected_files
+        }
+        
+        if rejected_files:
+            response_data["message"] = f"{len(created_recordings)} file(s) uploaded, {len(rejected_files)} rejected"
+        else:
+            response_data["message"] = f"{len(created_recordings)} file(s) uploaded successfully"
+
+        # Return 200 even if some files rejected (partial success)
+        return JsonResponse(response_data)
 
     return JsonResponse({"error": "Method not allowed"}, status=405)
 
@@ -1484,44 +1481,382 @@ def change_subscription_plan(request):
 
 def _calculate_prorated_amount(current_sub, new_plan):
     """
-    Calculate prorated amount for upgrade
+    Calculate prorated upgrade charge based on remaining time
     """
+
+    # Safety checks
     if not current_sub.started_at or not current_sub.expires_at:
         return new_plan.price
-    
-    # Calculate time remaining in current billing cycle
-    now = timezone.now()
-    total_period = (current_sub.expires_at - current_sub.started_at).total_seconds()
-    time_remaining = (current_sub.expires_at - now).total_seconds()
-    
-    if total_period <= 0 or time_remaining <= 0:
-        return new_plan.price
-    
-    # Calculate prorated amounts
-    time_used_ratio = Decimal(str((total_period - time_remaining) / total_period))
-    
-    # Credit from old plan (unused portion)
-    old_plan_credit = current_sub.subscription.price * (Decimal('1') - time_used_ratio)
-    
-    # Prorated charge for new plan (remaining time at new rate)
-    new_plan_prorated = new_plan.price * (Decimal('1') - time_used_ratio)
-    
-    # Amount to charge now = new plan prorated - old plan credit
-    prorated_charge = new_plan_prorated - old_plan_credit
-    
-    # Ensure charge is at least $0
-    prorated_charge = max(prorated_charge, Decimal('0'))
-    
-    logger.info(f"Proration calculation:")
-    logger.info(f"  Time used ratio: {time_used_ratio}")
-    logger.info(f"  Old plan credit: ${old_plan_credit}")
-    logger.info(f"  New plan prorated: ${new_plan_prorated}")
-    logger.info(f"  Prorated charge: ${prorated_charge}")
-    
-    return prorated_charge
 
+    now = timezone.now()
+
+    # 🔒 Prevent invalid time math
+    if now >= current_sub.expires_at:
+        return new_plan.price
+
+    total_seconds = (current_sub.expires_at - current_sub.started_at).total_seconds()
+    remaining_seconds = (current_sub.expires_at - now).total_seconds()
+
+    if total_seconds <= 0 or remaining_seconds <= 0:
+        return new_plan.price
+
+    remaining_ratio = Decimal(remaining_seconds) / Decimal(total_seconds)
+
+    old_price = Decimal(current_sub.subscription.price)
+    new_price = Decimal(new_plan.price)
+
+    # Only charge the DIFFERENCE for remaining time
+    prorated_charge = (new_price - old_price) * remaining_ratio
+
+    # Never negative, always rounded
+    return max(prorated_charge.quantize(Decimal("0.01")), Decimal("0.00"))
 
 def _handle_upgrade_prorated(request, current_sub, new_plan):
+    """
+    Handle upgrade with prorated billing
+    """
+    
+    # Calculate prorated amount
+    prorated_amount = _calculate_prorated_amount(current_sub, new_plan)
+    
+    try:
+        # STEP 1: Charge prorated amount as one-time transaction
+        if prorated_amount > 0:
+            charge_payload = {
+                "createTransactionRequest": {
+                    "merchantAuthentication": {
+                        "name": settings.AUTHORIZE_NET_LOGIN_ID,
+                        "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
+                    },
+                    "transactionRequest": {
+                        "transactionType": "authCaptureTransaction",
+                        "amount": str(round(prorated_amount, 2)),
+                        "profile": {
+                            "customerProfileId": current_sub.customer_profile_id,
+                            "paymentProfile": {
+                                "paymentProfileId": current_sub.customer_payment_profile_id
+                            }
+                        },
+                        "lineItems": {
+                            "lineItem": {
+                                "itemId": "UPGRADE",
+                                "name": f"Upgrade to {new_plan.name}",
+                                "description": "Prorated upgrade charge",
+                                "quantity": "1",
+                                "unitPrice": str(round(prorated_amount, 2))
+                            }
+                        }
+                    }
+                }
+            }
+            
+            logger.info(f"Charging prorated amount: ${prorated_amount}")
+            
+            charge_resp = requests.post(
+                settings.AUTHORIZE_NET_ENDPOINT,
+                json=charge_payload,
+                timeout=30,
+            )
+            charge_resp.encoding = "utf-8-sig"
+            charge_data = json.loads(charge_resp.text)
+            
+            logger.info(f"Charge response: {json.dumps(charge_data, indent=2)}")
+            
+            # Check charge response
+            charge_result = charge_data.get("transactionResponse", {})
+            response_code = charge_result.get("responseCode")
+            
+            if response_code != "1":  # 1 = Approved
+                error_text = charge_result.get("errors", [{}])[0].get("errorText", "Charge failed")
+                logger.error(f"Prorated charge failed: {error_text}")
+                return JsonResponse({
+                    "error": f"Upgrade charge failed: {error_text}"
+                }, status=400)
+            
+            transaction_id = charge_result.get("transId")
+            logger.info(f"✓ Prorated charge successful: ${prorated_amount}, Transaction ID: {transaction_id}")
+            
+            # Record payment
+            Payment.objects.create(
+                user=request.user,
+                subscription=new_plan,
+                amount=prorated_amount,
+                transaction_id=transaction_id,
+                status="success",
+                response_code="OK",
+            )
+        else:
+            logger.info("No prorated charge needed (amount is $0 or negative)")
+        
+        # STEP 2: Update existing ARB subscription amount
+        update_payload = {
+            "ARBUpdateSubscriptionRequest": {
+                "merchantAuthentication": {
+                    "name": settings.AUTHORIZE_NET_LOGIN_ID,
+                    "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
+                },
+                "subscriptionId": current_sub.authorize_subscription_id,
+                "subscription": {
+                    "name": f"{new_plan.name}",
+                    "amount": str(new_plan.price),
+                }
+            }
+        }
+        
+        logger.info(f"Updating subscription to new amount: ${new_plan.price}")
+        
+        update_resp = requests.post(
+            settings.AUTHORIZE_NET_ENDPOINT,
+            json=update_payload,
+            timeout=30,
+        )
+        update_resp.encoding = "utf-8-sig"
+        update_data = json.loads(update_resp.text)
+        
+        logger.info(f"Update response: {json.dumps(update_data, indent=2)}")
+        
+        # Check update response
+        update_result = update_data.get("ARBUpdateSubscriptionResponse", update_data)
+        update_messages = update_result.get("messages", {})
+        
+        if update_messages.get("resultCode") != "Ok":
+            error_messages = update_messages.get("message", [])
+            if isinstance(error_messages, dict):
+                error_messages = [error_messages]
+            
+            error_text = "; ".join(
+                f"{m.get('code', 'N/A')}: {m.get('text', 'Unknown error')}"
+                for m in error_messages
+            ) if error_messages else "Update failed"
+            
+            logger.error(f"Subscription update failed: {error_text}")
+            return JsonResponse({
+                "error": f"Subscription update failed: {error_text}. You were charged ${prorated_amount} but the subscription wasn't updated. Please contact support."
+            }, status=400)
+        
+        logger.info(f"✓ Subscription updated successfully")
+        
+        # STEP 3: Update database
+        now = timezone.now()
+
+        current_sub.subscription = new_plan
+        current_sub.started_at = now
+        current_sub.expires_at = calculate_expires_at(
+            now,
+            new_plan.billing_type
+        )
+        current_sub.save(update_fields=["subscription", "started_at", "expires_at"])
+
+        
+        logger.info(f"✓ Upgraded successfully to {new_plan.name}")
+        
+        # Return ONLY the essential message
+        return JsonResponse({
+            "success": True,
+            "message": f"Successfully upgraded to {new_plan.name}! You were charged ${round(prorated_amount, 2)} for the remaining period. Your next billing will be ${new_plan.price} on {current_sub.expires_at.strftime('%B %d, %Y')}."
+        })
+
+    except Exception as e:
+        logger.exception("Upgrade failed")
+        return JsonResponse({"error": str(e)}, status=500)
+    """
+    Handle upgrade with prorated billing
+    """
+    
+    # Calculate prorated amount
+    prorated_amount = _calculate_prorated_amount(current_sub, new_plan)
+    
+    try:
+        # STEP 1: Charge prorated amount as one-time transaction
+        if prorated_amount > 0:
+            charge_payload = {
+                "createTransactionRequest": {
+                    "merchantAuthentication": {
+                        "name": settings.AUTHORIZE_NET_LOGIN_ID,
+                        "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
+                    },
+                    "transactionRequest": {
+                        "transactionType": "authCaptureTransaction",
+                        "amount": str(round(prorated_amount, 2)),
+                        "profile": {
+                            "customerProfileId": current_sub.customer_profile_id,
+                            "paymentProfile": {
+                                "paymentProfileId": current_sub.customer_payment_profile_id
+                            }
+                        },
+                        "lineItems": {
+                            "lineItem": {
+                                "itemId": "UPGRADE",
+                                "name": f"Upgrade to {new_plan.name}",
+                                "description": "Prorated upgrade charge",
+                                "quantity": "1",
+                                "unitPrice": str(round(prorated_amount, 2))
+                            }
+                        }
+                    }
+                }
+            }
+            
+            logger.info(f"Charging prorated amount: ${prorated_amount}")
+            
+            charge_resp = requests.post(
+                settings.AUTHORIZE_NET_ENDPOINT,
+                json=charge_payload,
+                timeout=30,
+            )
+            charge_resp.encoding = "utf-8-sig"
+            charge_data = json.loads(charge_resp.text)
+            
+            logger.info(f"Charge response: {json.dumps(charge_data, indent=2)}")
+            
+            # Check charge response
+            charge_result = charge_data.get("transactionResponse", {})
+            response_code = charge_result.get("responseCode")
+            
+            if response_code != "1":  # 1 = Approved
+                error_text = charge_result.get("errors", [{}])[0].get("errorText", "Charge failed")
+                logger.error(f"Prorated charge failed: {error_text}")
+                return JsonResponse({
+                    "error": f"Upgrade charge failed: {error_text}"
+                }, status=400)
+            
+            transaction_id = charge_result.get("transId")
+            logger.info(f"✓ Prorated charge successful: ${prorated_amount}, Transaction ID: {transaction_id}")
+            
+            # Record payment
+            Payment.objects.create(
+                user=request.user,
+                subscription=new_plan,
+                amount=prorated_amount,
+                transaction_id=transaction_id,
+                status="success",
+                response_code="OK",
+            )
+        else:
+            logger.info("No prorated charge needed (amount is $0 or negative)")
+        
+        # STEP 2: Cancel OLD subscription
+        cancel_payload = {
+            "ARBCancelSubscriptionRequest": {
+                "merchantAuthentication": {
+                    "name": settings.AUTHORIZE_NET_LOGIN_ID,
+                    "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
+                },
+                "subscriptionId": current_sub.authorize_subscription_id,
+            }
+        }
+        
+        logger.info(f"Cancelling old subscription: {current_sub.authorize_subscription_id}")
+        
+        cancel_resp = requests.post(
+            settings.AUTHORIZE_NET_ENDPOINT,
+            json=cancel_payload,
+            timeout=30,
+        )
+        cancel_resp.encoding = "utf-8-sig"
+        cancel_data = json.loads(cancel_resp.text)
+        
+        logger.info(f"Cancel response: {json.dumps(cancel_data, indent=2)}")
+        
+        # STEP 3: Create NEW subscription at new price starting at current expiry date
+        # Determine interval
+        if new_plan.billing_type == "monthly":
+            interval_length = 1
+            interval_unit = "months"
+        elif new_plan.billing_type == "yearly":
+            interval_length = 12
+            interval_unit = "months"
+        else:
+            interval_length = 1
+            interval_unit = "months"
+        
+        # Start date = current expiry date (when the next billing SHOULD happen)
+        start_date = current_sub.expires_at.date() if current_sub.expires_at else timezone.now().date()
+        
+        create_payload = {
+            "ARBCreateSubscriptionRequest": {
+                "merchantAuthentication": {
+                    "name": settings.AUTHORIZE_NET_LOGIN_ID,
+                    "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
+                },
+                "subscription": {
+                    "name": f"{new_plan.name}",
+                    "paymentSchedule": {
+                        "interval": {
+                            "length": interval_length,
+                            "unit": interval_unit,
+                        },
+                        "startDate": start_date.isoformat(),
+                        "totalOccurrences": "9999",
+                    },
+                    "amount": str(new_plan.price),
+                    "profile": {
+                        "customerProfileId": current_sub.customer_profile_id,
+                        "customerPaymentProfileId": current_sub.customer_payment_profile_id,
+                    },
+                },
+            }
+        }
+        
+        logger.info(f"Creating new subscription at ${new_plan.price}, starts: {start_date}")
+        
+        create_resp = requests.post(
+            settings.AUTHORIZE_NET_ENDPOINT,
+            json=create_payload,
+            timeout=30,
+        )
+        create_resp.encoding = "utf-8-sig"
+        create_data = json.loads(create_resp.text)
+        
+        logger.info(f"Create response: {json.dumps(create_data, indent=2)}")
+        
+        # Check create response
+        create_result = create_data.get("ARBCreateSubscriptionResponse", create_data)
+        create_messages = create_result.get("messages", {})
+        
+        if create_messages.get("resultCode") != "Ok":
+            error_messages = create_messages.get("message", [])
+            if isinstance(error_messages, dict):
+                error_messages = [error_messages]
+            
+            error_text = "; ".join(
+                f"{m.get('code', 'N/A')}: {m.get('text', 'Unknown error')}"
+                for m in error_messages
+            ) if error_messages else "Failed to create new subscription"
+            
+            logger.error(f"New subscription creation failed: {error_text}")
+            return JsonResponse({
+                "error": f"Upgrade failed: {error_text}. You were charged ${prorated_amount}. Please contact support."
+            }, status=400)
+        
+        new_subscription_id = create_result.get("subscriptionId")
+        
+        if not new_subscription_id:
+            return JsonResponse({
+                "error": "No subscription ID returned. Please contact support."
+            }, status=400)
+        
+        logger.info(f"✓ New subscription created: {new_subscription_id}")
+        
+        # STEP 4: Update database
+        current_sub.subscription = new_plan
+        current_sub.authorize_subscription_id = new_subscription_id
+        current_sub.save(update_fields=['subscription', 'authorize_subscription_id'])
+        
+        logger.info(f"✓ Upgraded successfully to {new_plan.name}")
+        
+        return JsonResponse({
+        "success": True,
+        "message": f"Successfully upgraded to {new_plan.name}! Your next billing will be ${new_plan.price} on {current_sub.expires_at.strftime('%B %d, %Y')}.",
+        "prorated_charge": str(round(prorated_amount, 2)),
+        "new_plan_name": new_plan.name,
+        "new_plan_price": str(new_plan.price),
+        "next_billing_date": current_sub.expires_at.strftime('%B %d, %Y')
+    })
+
+    except Exception as e:
+        logger.exception("Upgrade failed")
+        return JsonResponse({"error": str(e)}, status=500)
     """
     Handle upgrade with prorated billing
     """
@@ -1662,6 +1997,76 @@ def _handle_upgrade_prorated(request, current_sub, new_plan):
     except Exception as e:
         logger.exception("Upgrade failed")
         return JsonResponse({"error": str(e)}, status=500)
+
+@login_required
+@require_POST
+def preview_plan_change(request):
+    try:
+        data = json.loads(request.body)
+        new_subscription_id = data.get("subscription_id")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid request data"}, status=400)
+
+    if not new_subscription_id:
+        return JsonResponse({"error": "Subscription ID required"}, status=400)
+
+    current_sub = (
+        UserSubscription.objects
+        .filter(user=request.user, active=True)
+        .select_related("subscription")
+        .first()
+    )
+
+    if not current_sub:
+        return JsonResponse({"error": "No active subscription found"}, status=400)
+
+    new_plan = get_object_or_404(
+        Subscription,
+        id=new_subscription_id,
+        status="published"
+    )
+
+    # ❗ Prevent invalid billing switches
+    if new_plan.billing_type != current_sub.subscription.billing_type:
+        return JsonResponse({
+            "error": "Cannot switch between monthly and yearly plans."
+        }, status=400)
+
+    if current_sub.subscription.id == new_plan.id:
+        return JsonResponse({"error": "You are already on this plan"}, status=400)
+
+    is_upgrade = new_plan.price > current_sub.subscription.price
+
+    # 🔒 expires_at MUST exist
+    if not current_sub.expires_at:
+        return JsonResponse({
+            "error": "Billing cycle information missing. Please contact support."
+        }, status=400)
+
+    if is_upgrade:
+        prorated_amount = _calculate_prorated_amount(current_sub, new_plan)
+
+        return JsonResponse({
+            "success": True,
+            "is_upgrade": True,
+            "current_plan": current_sub.subscription.name,
+            "new_plan": new_plan.name,
+            "current_price": str(current_sub.subscription.price),
+            "new_price": str(new_plan.price),
+            "prorated_charge": str(prorated_amount),
+            "next_billing_date": current_sub.expires_at.strftime("%B %d, %Y"),
+        })
+
+    # Downgrade
+    return JsonResponse({
+        "success": True,
+        "is_upgrade": False,
+        "current_plan": current_sub.subscription.name,
+        "new_plan": new_plan.name,
+        "current_price": str(current_sub.subscription.price),
+        "new_price": str(new_plan.price),
+        "effective_date": current_sub.expires_at.strftime("%B %d, %Y"),
+    })
 
 
 def _handle_downgrade(request, current_sub, new_plan):

@@ -66,16 +66,23 @@
           </td>
           <td>{{ recording.created_at|date:"m/d/Y" }}</td>
           <td>
-            {% if recording.status != "completed" %}
-              <div class="progress-wrapper" data-id="{{ recording.id }}">
-                <div class="progress-bar">
-                  <div class="progress-fill" style="width: {{ recording.progress }}%"></div>
-                </div>
-                <small class="progress-text">{{ recording.progress }}%</small>
+            {% if recording.status == "processing" %}
+            <div class="progress-wrapper" data-id="{{ recording.id }}">
+              <div class="progress-bar">
+                <div class="progress-fill" style="width: {{ recording.progress }}%"></div>
               </div>
-            {% else %}
-              Completed
-            {% endif %}
+              <small class="progress-text">{{ recording.progress }}%</small>
+            </div>
+
+          {% elif recording.status == "failed" %}
+            <span style="color:#ff6b6b; font-weight:600;">
+              ❌ Failed – No audio detected
+            </span>
+
+          {% else %}
+            Completed
+          {% endif %}
+
           </td>
             <td class="action-cell">
               {% if recording.status == "completed" and recording.pdf_url %}
@@ -216,15 +223,10 @@ function pollRecordingProgress() {
         text.textContent = data.progress + "%";
 
         // When completed → update row dynamically
-        if (data.status === "completed") {
+       if (data.status === "completed") {
 
-           if (durationCell && data.duration !== undefined) {
-              durationCell.textContent = Number(data.duration).toFixed(2);
-            }
-          // STATUS COLUMN
           wrapper.parentElement.innerHTML = "Completed";
 
-          // TITLE COLUMN (make clickable)
           const titleCell = row.querySelector(".title-cell");
           titleCell.innerHTML = `
             <a href="/dashboard/recording/${data.encoded_id}/" class="recording-link">
@@ -232,7 +234,6 @@ function pollRecordingProgress() {
             </a>
           `;
 
-          // ACTION COLUMN (PDF)
           const actionCell = row.querySelector(".action-cell");
           if (data.pdf_url) {
             actionCell.innerHTML = `
@@ -242,9 +243,19 @@ function pollRecordingProgress() {
             `;
           }
 
-          // Remove from polling list
           wrapper.remove();
         }
+
+        /* 🔴 NEW: handle failed state */
+        if (data.status === "failed") {
+          wrapper.parentElement.innerHTML = `
+            <span style="color:#ff6b6b; font-weight:600;">
+              ❌ Failed – No audio detected
+            </span>
+          `;
+          wrapper.remove();
+        }
+
       });
   });
 }
