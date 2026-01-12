@@ -1446,8 +1446,8 @@ def change_subscription_plan(request):
 
     # Get new subscription plan
     try:
-        new_plan = AdminSubscription.objects.get(id=new_subscription_id, status='published')
-    except AdminSubscription.DoesNotExist:
+        new_plan = Subscription.objects.get(id=new_subscription_id, status='published')
+    except Subscription.DoesNotExist:
         return JsonResponse({"error": "Invalid subscription plan"}, status=400)
 
     # Check if it's the same plan

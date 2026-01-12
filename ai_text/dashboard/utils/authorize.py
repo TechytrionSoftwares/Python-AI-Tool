@@ -6,51 +6,68 @@ from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
 from django.utils import timezone
 from dateutil.relativedelta import relativedelta
+
 from dashboard.models import UserSubscription, Payment
 
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------
+
 def _extend_expires_at(user_sub):
     """
-    Extend the current billing cycle without resetting it.
-    This keeps proration and billing dates stable.
+    Extend billing cycle WITHOUT resetting it.
+    - Keeps proration correct
+    - Keeps next billing date stable
     """
     base = user_sub.expires_at or timezone.now()
 
     if user_sub.subscription.billing_type == "monthly":
         return base + relativedelta(months=1)
+
     return base + relativedelta(years=1)
 
 
+# ---------------------------------------------------------
+# Webhook
+# ---------------------------------------------------------
+
 @csrf_exempt
 def authorize_net_webhook(request):
-    # Authorize.Net validation ping
-    if request.method in ["GET", "HEAD"]:
+    """
+    Handles all Authorize.Net webhooks safely.
+    """
+
+    # Validation ping
+    if request.method in ("GET", "HEAD"):
         return HttpResponse("OK", status=200)
 
     if request.method != "POST":
         return HttpResponse(status=405)
 
+    # Parse payload safely
     try:
         payload = json.loads(request.body.decode("utf-8") or "{}")
-        logger.info(f"Authorize.Net webhook received: {payload}")
+        logger.info("Authorize.Net webhook received: %s", payload)
     except Exception as e:
-        logger.error(f"Webhook payload error: {str(e)}")
+        logger.error("Webhook JSON parse error: %s", e)
         return HttpResponse(status=200)
 
     event_type = payload.get("eventType")
     data = payload.get("payload", {})
 
-    # ------------------------------------------------
-    # PAYMENT SUCCESS (INITIAL + AUTO-RENEWAL)
-    # ------------------------------------------------
+    # =====================================================
+    # PAYMENT SUCCESS (INITIAL / RENEWAL / PRORATION)
+    # =====================================================
     if event_type == "net.authorize.payment.authcapture.created":
-        subscription_id = data.get("subscription", {}).get("id")
-        amount = data.get("amount", 0)
-        transaction_id = data.get("id")
 
-        if not subscription_id:
+        subscription_id = data.get("subscription", {}).get("id")
+        transaction_id = data.get("id")
+        amount = data.get("amount", 0)
+
+        if not subscription_id or not transaction_id:
             return HttpResponse(status=200)
 
         try:
@@ -58,9 +75,12 @@ def authorize_net_webhook(request):
                 authorize_subscription_id=subscription_id
             )
         except UserSubscription.DoesNotExist:
+            logger.warning("Subscription not found: %s", subscription_id)
             return HttpResponse(status=200)
 
-        # Record payment
+        # -------------------------------------------------
+        # Record payment (idempotent)
+        # -------------------------------------------------
         Payment.objects.get_or_create(
             transaction_id=transaction_id,
             defaults={
@@ -72,18 +92,25 @@ def authorize_net_webhook(request):
             }
         )
 
-
-        # 🔒 EXTEND billing cycle (DO NOT RESET)
+        # -------------------------------------------------
+        # IMPORTANT RULE:
+        # - NEVER reset started_at
+        # - NEVER set expires_at = now + 1 month
+        # -------------------------------------------------
         user_sub.expires_at = _extend_expires_at(user_sub)
         user_sub.active = True
         user_sub.cancel_at_period_end = False
 
-        # ------------------------------------------------
-        # APPLY PENDING DOWNGRADE (if any)
-        # ------------------------------------------------
-        if user_sub.pending_subscription and user_sub.pending_authorize_subscription_id:
+        # -------------------------------------------------
+        # Apply pending downgrade AFTER successful renewal
+        # -------------------------------------------------
+        if (
+            user_sub.pending_subscription
+            and user_sub.pending_authorize_subscription_id
+        ):
             logger.info(
-                f"Applying pending downgrade to {user_sub.pending_subscription.name}"
+                "Applying scheduled downgrade to %s",
+                user_sub.pending_subscription.name,
             )
 
             try:
@@ -111,7 +138,7 @@ def authorize_net_webhook(request):
                 user_sub.pending_authorize_subscription_id = None
 
             except Exception as e:
-                logger.error(f"Failed to apply downgrade: {e}")
+                logger.error("Failed to apply downgrade: %s", e)
 
         user_sub.save(
             update_fields=[
@@ -125,10 +152,13 @@ def authorize_net_webhook(request):
             ]
         )
 
-    # ------------------------------------------------
+        return HttpResponse(status=200)
+
+    # =====================================================
     # PAYMENT FAILED
-    # ------------------------------------------------
+    # =====================================================
     elif event_type == "net.authorize.customer.subscription.failed":
+
         subscription_id = data.get("id")
 
         try:
@@ -146,14 +176,17 @@ def authorize_net_webhook(request):
             subscription=user_sub.subscription,
             amount=0,
             status="failed",
-            transaction_id=data.get("id", "FAILED"),
+            transaction_id=subscription_id or "FAILED",
             response_code="FAILED",
         )
 
-    # ------------------------------------------------
+        return HttpResponse(status=200)
+
+    # =====================================================
     # SUBSCRIPTION CANCELLED (ACCESS CONTINUES)
-    # ------------------------------------------------
+    # =====================================================
     elif event_type == "net.authorize.customer.subscription.cancelled":
+
         subscription_id = data.get("id")
 
         try:
@@ -165,13 +198,16 @@ def authorize_net_webhook(request):
         except UserSubscription.DoesNotExist:
             pass
 
-    # ------------------------------------------------
+        return HttpResponse(status=200)
+
+    # =====================================================
     # SUBSCRIPTION CREATED / UPDATED (STORE PROFILE IDS)
-    # ------------------------------------------------
+    # =====================================================
     elif event_type in (
         "net.authorize.customer.subscription.created",
         "net.authorize.customer.subscription.updated",
     ):
+
         subscription_id = data.get("id")
         profile_data = data.get("profile", {})
 
@@ -183,9 +219,11 @@ def authorize_net_webhook(request):
             return HttpResponse(status=200)
 
         updated = False
+
         if profile_data.get("customerProfileId"):
             user_sub.customer_profile_id = profile_data["customerProfileId"]
             updated = True
+
         if profile_data.get("customerPaymentProfileId"):
             user_sub.customer_payment_profile_id = profile_data[
                 "customerPaymentProfileId"
@@ -200,4 +238,10 @@ def authorize_net_webhook(request):
                 ]
             )
 
+        return HttpResponse(status=200)
+
+    # =====================================================
+    # UNHANDLED EVENTS (SAFE IGNORE)
+    # =====================================================
+    logger.info("Unhandled Authorize.Net event: %s", event_type)
     return HttpResponse(status=200)
