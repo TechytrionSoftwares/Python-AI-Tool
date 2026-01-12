@@ -21,26 +21,32 @@ class SubscriptionRequiredMiddleware:
             "/dashboard/login/",
             "/dashboard/logout/",
             "/dashboard/register/",
-            "/dashboard/settings/",
+            "/dashboard/choose-plan/",
+            "/dashboard/checkout/",
+            "/dashboard/subscription/",
+            "/dashboard/payment/",
             "/dashboard/webhooks/",
         ]
 
         if any(request.path.startswith(p) for p in EXEMPT_PATHS):
             return self.get_response(request)
 
+        # Allow subscription-related POST actions
+        if request.method == "POST" and request.path.startswith("/dashboard/"):
+            return self.get_response(request)
+
         subscription = UserSubscription.objects.filter(
-            user=request.user
+            user=request.user, active=True
         ).first()
 
-        #  No subscription at all
         if not subscription:
             messages.error(
                 request,
                 "You don’t have an active subscription."
             )
-            return redirect("settings")
+            return redirect("register")
 
-        #  Expired subscription
+        # Expired subscription
         if (
             subscription.cancel_at_period_end
             and subscription.expires_at
@@ -55,13 +61,4 @@ class SubscriptionRequiredMiddleware:
             )
             return redirect("settings")
 
-        #  Fully inactive (not cancelled, just inactive)
-        if not subscription.active:
-            messages.error(
-                request,
-                "Your subscription is inactive. Please renew."
-            )
-            return redirect("settings")
-
-        #  Access allowed
         return self.get_response(request)

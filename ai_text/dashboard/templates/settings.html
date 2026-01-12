@@ -36,22 +36,15 @@
 }
 
 .password-field {
-  /* display: flex; */
+  display: flex;
   align-items: center;
   gap: 12px;
 }
 
 .change-link {
-    color: #fff;
-    text-decoration: none;
-    background: #5b6cff;
-    padding: 10px 20px;
-    border-radius: 8px;
-    border: none;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 600;
-    transition: all 0.3s ease;
+  font-size: 14px;
+  color: #5b6cff;
+  text-decoration: none;
 }
 
 .modal-overlay {
@@ -336,7 +329,7 @@
 
     <div class="field password-field">
       <label>Password</label>
-      <input type="password" value="************" disabled style="width:100%;margin-bottom: 30px;">
+      <input type="password" value="************" disabled style="width:440px;">
       <a href="javascript:void(0)" class="change-link" onclick="openPasswordModal()">
         Change Password
       </a>
@@ -421,34 +414,34 @@
       {% endif %}
 
       <!-- Subscription Action Buttons -->
-      <div class="subscription-actions">
+    <div class="subscription-actions">
+      {% if can_manage_subscription %}
 
-  {% if not has_successful_payment %}
-    <p style="color:#ffd88c;font-size:14px;">
-      ⏳ Your payment is being processed.
-      You can update or cancel your plan after the first payment is completed.
-    </p>
+        {% if active_subscription.cancel_at_period_end %}
+          <!-- Subscription already cancelled → allow resume only -->
+          <button id="resume-subscription" class="btn-subscription btn-resume">
+            Resume Subscription
+          </button>
 
-  {% elif active_subscription.cancel_at_period_end %}
-    <button id="resume-subscription" class="btn-subscription btn-resume">
-      Resume Subscription
-    </button>
+        {% else %}
+          <!-- Normal active subscription -->
+          <button id="change-plan-btn" class="btn-subscription btn-change">
+            Change Plan
+          </button>
+          <button id="cancelSubBtn" class="btn-subscription btn-cancel">
+            Cancel Subscription
+          </button>
+        {% endif %}
 
-  {% elif active_subscription.pending_subscription %}
-    <button onclick="cancelPlanChange()" class="btn-subscription btn-cancel">
-      Cancel Plan Change
-    </button>
-
-  {% else %}
-    <button id="change-plan-btn" class="btn-subscription btn-change">
-      Change Plan
-    </button>
-    <button id="cancelSubBtn" class="btn-subscription btn-cancel">
-      Cancel Subscription
-    </button>
-  {% endif %}
-
-</div>
+      {% else %}
+        <p style="color:#ccc;font-size:13px;">
+          You can change or cancel your subscription after 48 hours.
+          {% if hours_remaining %}
+            (Available in {{ hours_remaining }} hour{{ hours_remaining|pluralize }})
+          {% endif %}
+        </p>
+      {% endif %}
+    </div>
 
 
 
@@ -537,6 +530,7 @@
 </div>
 
 <!-- PLAN CHANGE MODAL -->
+<!-- PLAN CHANGE MODAL -->
 <div id="planChangeModal" class="modal-overlay">
   <div class="modal">
     <h3>Change Subscription Plan</h3>
@@ -550,9 +544,25 @@
 
     <div class="modal-actions">
       <button type="button" onclick="closePlanChangeModal()">Cancel</button>
-      <button type="button" class="primary" onclick="confirmPlanChange()">Change Plan</button>
+      <button type="button" class="primary" onclick="previewPlanChange()">Continue</button>
     </div>
     <div id="planChangeErrors" class="error-text"></div>
+  </div>
+</div>
+
+<!-- CONFIRMATION MODAL -->
+<div id="confirmationModal" class="modal-overlay">
+  <div class="modal">
+    <h3>Confirm Plan Change</h3>
+    <div id="confirmationDetails" style="background: #f9fafb; padding: 15px; border-radius: 8px; margin: 15px 0;">
+      <!-- Details will be loaded here -->
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" onclick="closeConfirmationModal()">Cancel</button>
+      <button type="button" class="primary" onclick="confirmPlanChange()">Confirm Change</button>
+    </div>
+    <div id="confirmationErrors" class="error-text"></div>
   </div>
 </div>
 
@@ -560,14 +570,231 @@
 let selectedPlanId = null;
 let currentPlanPrice = {{ active_subscription.subscription.price|default:0 }};
 
-// Password Modal Functions
-function openPasswordModal() {
-  document.getElementById("passwordModal").style.display = "flex";
+// Plan Change Modal Functions
+function openPlanChangeModal() {
+  document.getElementById("planChangeModal").style.display = "flex";
+  loadAvailablePlans();
 }
 
-function closePasswordModal() {
-  document.getElementById("passwordModal").style.display = "none";
+function closePlanChangeModal() {
+  document.getElementById("planChangeModal").style.display = "none";
+  selectedPlanId = null;
 }
+
+function closeConfirmationModal() {
+  document.getElementById("confirmationModal").style.display = "none";
+}
+
+function loadAvailablePlans() {
+  const currentBillingType = "{{ active_subscription.subscription.billing_type }}";
+  const currentPlanId = {{ active_subscription.subscription.id|default:0 }};
+  
+  const plans = [
+    {% for plan in all_plans %}
+    {
+      id: {{ plan.id }},
+      name: "{{ plan.name }}",
+      price: {{ plan.price }},
+      billing_type: "{{ plan.billing_type }}",
+      is_current: {{ plan.id }} === currentPlanId
+    }{% if not forloop.last %},{% endif %}
+    {% endfor %}
+  ];
+
+  const grid = document.getElementById("planGrid");
+  grid.innerHTML = "";
+
+  if (plans.length === 0) {
+    grid.innerHTML = '<p style="color: #666;">No plans available for your billing type.</p>';
+    return;
+  }
+
+  plans.forEach(plan => {
+    const card = document.createElement("div");
+    card.className = "plan-card";
+    if (plan.is_current) card.classList.add("current");
+
+    let badge = "";
+    if (plan.is_current) {
+      badge = '<span class="plan-badge badge-current">Current Plan</span>';
+    } else if (plan.price > currentPlanPrice) {
+      badge = '<span class="plan-badge badge-upgrade">Upgrade</span>';
+    } else {
+      badge = '<span class="plan-badge badge-downgrade">Downgrade</span>';
+    }
+
+    card.innerHTML = `
+      <div class="plan-name">${plan.name} ${badge}</div>
+      <div class="plan-price">$${plan.price}/${plan.billing_type}</div>
+    `;
+
+    if (!plan.is_current) {
+      card.onclick = () => selectPlan(plan.id, card);
+    } else {
+      card.style.cursor = 'default';
+    }
+
+    grid.appendChild(card);
+  });
+}
+
+function selectPlan(planId, cardElement) {
+  document.querySelectorAll(".plan-card").forEach(c => c.classList.remove("selected"));
+  cardElement.classList.add("selected");
+  selectedPlanId = planId;
+}
+
+function previewPlanChange() {
+  if (!selectedPlanId) {
+    alert("Please select a plan");
+    return;
+  }
+
+  const errorDiv = document.getElementById("planChangeErrors");
+  errorDiv.textContent = "";
+
+  // Show loading
+  const continueBtn = document.querySelector('#planChangeModal .modal-actions .primary');
+  const originalText = continueBtn.textContent;
+  continueBtn.disabled = true;
+  continueBtn.textContent = "Loading...";
+
+  fetch("{% url 'preview_plan_change' %}", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRFToken": "{{ csrf_token }}"
+    },
+    body: JSON.stringify({ subscription_id: selectedPlanId })
+  })
+  .then(res => res.json())
+  .then(data => {
+    continueBtn.disabled = false;
+    continueBtn.textContent = originalText;
+
+    if (data.success) {
+      // Show confirmation modal with details
+      showConfirmationModal(data);
+      closePlanChangeModal();
+    } else {
+      errorDiv.textContent = data.error || "Unable to preview plan change";
+    }
+  })
+  .catch(err => {
+    continueBtn.disabled = false;
+    continueBtn.textContent = originalText;
+    errorDiv.textContent = "Network error occurred";
+  });
+}
+
+function showConfirmationModal(data) {
+  const detailsDiv = document.getElementById("confirmationDetails");
+  
+  if (data.is_upgrade) {
+    detailsDiv.innerHTML = `
+      <div style="margin-bottom: 12px;">
+        <strong style="color: #111;">Plan Change Summary</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+        <span style="color: #666;">Current Plan:</span>
+        <span style="color: #111; font-weight: 600;">${data.current_plan} ($${data.current_price})</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e5e7eb;">
+        <span style="color: #666;">New Plan:</span>
+        <span style="color: #111; font-weight: 600;">${data.new_plan} ($${data.new_price})</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+        <span style="color: #666;">Prorated Charge Today:</span>
+        <span style="color: #067647; font-weight: 700; font-size: 18px;">$${data.prorated_charge}</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+        <span style="color: #666;">Next Billing Date:</span>
+        <span style="color: #111;">${data.next_billing_date}</span>
+      </div>
+      <div style="display: flex; justify-content: space-between;">
+        <span style="color: #666;">Next Billing Amount:</span>
+        <span style="color: #111; font-weight: 600;">$${data.new_price}</span>
+      </div>
+      <div style="margin-top: 12px; padding: 10px; background: #eff6ff; border-radius: 6px; font-size: 13px; color: #1e40af;">
+        💡 You'll be charged $${data.prorated_charge} now for the remaining time in your current billing period at the new rate.
+      </div>
+    `;
+  } else {
+    detailsDiv.innerHTML = `
+      <div style="margin-bottom: 12px;">
+        <strong style="color: #111;">Plan Change Summary</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+        <span style="color: #666;">Current Plan:</span>
+        <span style="color: #111; font-weight: 600;">${data.current_plan} ($${data.current_price})</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e5e7eb;">
+        <span style="color: #666;">New Plan:</span>
+        <span style="color: #111; font-weight: 600;">${data.new_plan} ($${data.new_price})</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+        <span style="color: #666;">Charge Today:</span>
+        <span style="color: #067647; font-weight: 700; font-size: 18px;">$0.00</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+        <span style="color: #666;">Effective Date:</span>
+        <span style="color: #111;">${data.effective_date}</span>
+      </div>
+      <div style="display: flex; justify-content: space-between;">
+        <span style="color: #666;">New Billing Amount:</span>
+        <span style="color: #111; font-weight: 600;">$${data.new_price}</span>
+      </div>
+      <div style="margin-top: 12px; padding: 10px; background: #fff4e5; border-radius: 6px; font-size: 13px; color: #b54708;">
+        ⚠️ Your plan will change on ${data.effective_date}. You'll continue to have access to your current plan until then.
+      </div>
+    `;
+  }
+
+  document.getElementById("confirmationModal").style.display = "flex";
+}
+
+function confirmPlanChange() {
+  if (!selectedPlanId) {
+    closeConfirmationModal();
+    return;
+  }
+
+  const errorDiv = document.getElementById("confirmationErrors");
+  errorDiv.textContent = "";
+  
+  const confirmBtn = document.querySelector('#confirmationModal .modal-actions .primary');
+  const originalText = confirmBtn.textContent;
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = "Processing...";
+
+  fetch("{% url 'change_subscription_plan' %}", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRFToken": "{{ csrf_token }}"
+    },
+    body: JSON.stringify({ subscription_id: selectedPlanId })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      alert(data.message);
+      location.reload();
+    } else {
+      errorDiv.textContent = data.error || "Unable to change plan";
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = originalText;
+    }
+  })
+  .catch(err => {
+    errorDiv.textContent = "Network error occurred";
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = originalText;
+  });
+}
+
+// Add event listener for Change Plan button
+document.getElementById("change-plan-btn")?.addEventListener("click", openPlanChangeModal);
 
 function togglePassword(el) {
   const input = el.previousElementSibling;
@@ -668,97 +895,9 @@ document.getElementById("resume-subscription")?.addEventListener("click", functi
   });
 });
 
-// Plan Change Modal Functions
-function openPlanChangeModal() {
-  document.getElementById("planChangeModal").style.display = "flex";
-  loadAvailablePlans();
-}
 
-function closePlanChangeModal() {
-  document.getElementById("planChangeModal").style.display = "none";
-  selectedPlanId = null;
-}
 
-function loadAvailablePlans() {
-  // In a real app, fetch from API. For now, using template data
-  const plans = [
-    {% for plan in all_plans %}
-    {
-      id: {{ plan.id }},
-      name: "{{ plan.name }}",
-      price: {{ plan.price }},
-      billing_type: "{{ plan.billing_type }}",
-      is_current: {% if active_subscription.subscription.id == plan.id %}true{% else %}false{% endif %}
-    },
-    {% endfor %}
-  ];
 
-  const grid = document.getElementById("planGrid");
-  grid.innerHTML = "";
-
-  plans.forEach(plan => {
-    const card = document.createElement("div");
-    card.className = "plan-card";
-    if (plan.is_current) card.classList.add("current");
-
-    let badge = "";
-    if (plan.is_current) {
-      badge = '<span class="plan-badge badge-current">Current Plan</span>';
-    } else if (plan.price > currentPlanPrice) {
-      badge = '<span class="plan-badge badge-upgrade">Upgrade</span>';
-    } else {
-      badge = '<span class="plan-badge badge-downgrade">Downgrade</span>';
-    }
-
-    card.innerHTML = `
-      <div class="plan-name">${plan.name} ${badge}</div>
-      <div class="plan-price">$${plan.price}/${plan.billing_type}</div>
-    `;
-
-    if (!plan.is_current) {
-      card.onclick = () => selectPlan(plan.id, card);
-    }
-
-    grid.appendChild(card);
-  });
-}
-
-function selectPlan(planId, cardElement) {
-  document.querySelectorAll(".plan-card").forEach(c => c.classList.remove("selected"));
-  cardElement.classList.add("selected");
-  selectedPlanId = planId;
-}
-
-function confirmPlanChange() {
-  if (!selectedPlanId) {
-    alert("Please select a plan");
-    return;
-  }
-
-  const errorDiv = document.getElementById("planChangeErrors");
-  errorDiv.textContent = "";
-
-  fetch("{% url 'change_subscription_plan' %}", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-CSRFToken": "{{ csrf_token }}"
-    },
-    body: JSON.stringify({ subscription_id: selectedPlanId })
-  })
-  .then(res => res.json())
-  .then(data => {
-    if (data.success) {
-      alert(data.message);
-      location.reload();
-    } else {
-      errorDiv.textContent = data.error || "Unable to change plan";
-    }
-  })
-  .catch(err => {
-    errorDiv.textContent = "Network error occurred";
-  });
-}
 
 function cancelPlanChange() {
   if (!confirm("Cancel the scheduled plan change?")) return;

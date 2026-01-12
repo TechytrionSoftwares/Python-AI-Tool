@@ -25,4 +25,5 @@ urlpatterns = [
     path("subscription/resume/", views.resume_subscription, name="resume_subscription"),
     path('subscription/change-plan/', views.change_subscription_plan, name='change_subscription_plan'),
     path('subscription/cancel-plan-change/', views.cancel_plan_change, name='cancel_plan_change'),
+    path('subscription/preview-change/', views.preview_plan_change, name='preview_plan_change'),
 ]
