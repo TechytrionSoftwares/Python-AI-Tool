@@ -1915,12 +1915,27 @@ def preview_plan_change(request):
 
 def _handle_downgrade(request, current_sub, new_plan):
     """
-    Handle downgrade - create new subscription scheduled for next billing cycle
+    SAFE DOWNGRADE FLOW (AUTHORIZE.NET)
+
+    - Create NEW subscription starting next billing date
+    - Cancel CURRENT subscription so it does not renew
+    - Current plan remains active until expiry
+    - Prevent double billing
     """
-    
-    start_date = current_sub.expires_at.date() if current_sub.expires_at else timezone.now().date()
-    
-    # Determine interval for Authorize.Net
+
+    if not current_sub.authorize_subscription_id:
+        return JsonResponse(
+            {"error": "No active subscription found."},
+            status=400
+        )
+
+    start_date = (
+        current_sub.expires_at.date()
+        if current_sub.expires_at
+        else timezone.now().date()
+    )
+
+    # Determine interval
     if new_plan.billing_type == "monthly":
         interval_length = 1
         interval_unit = "months"
@@ -1931,84 +1946,101 @@ def _handle_downgrade(request, current_sub, new_plan):
         interval_length = 1
         interval_unit = "months"
 
-    # Create new ARB subscription at lower price (starts at next billing cycle)
-    payload = {
-        "ARBCreateSubscriptionRequest": {
-            "merchantAuthentication": {
-                "name": settings.AUTHORIZE_NET_LOGIN_ID,
-                "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
-            },
-            "subscription": {
-                "name": f"{new_plan.name} (Scheduled)",
-                "paymentSchedule": {
-                    "interval": {
-                        "length": interval_length,
-                        "unit": interval_unit,
-                    },
-                    "startDate": start_date.isoformat(),
-                    "totalOccurrences": "9999",
-                },
-                "amount": str(new_plan.price),
-                "profile": {
-                    "customerProfileId": current_sub.customer_profile_id,
-                    "customerPaymentProfileId": current_sub.customer_payment_profile_id,
-                },
-            },
-        }
-    }
-
-    logger.info(f"Downgrade payload: {json.dumps(payload, indent=2)}")
-
     try:
-        # Create new subscription
-        create_resp = requests.post(
-            settings.AUTHORIZE_NET_ENDPOINT,
-            json=payload,
-            timeout=30,
-        )
-        create_resp.encoding = "utf-8-sig"
-        create_data = json.loads(create_resp.text)
+        with transaction.atomic():
 
-        logger.info(f"Downgrade create response: {json.dumps(create_data, indent=2)}")
+            # 1️⃣ Create NEW subscription (starts next billing)
+            create_payload = {
+                "ARBCreateSubscriptionRequest": {
+                    "merchantAuthentication": {
+                        "name": settings.AUTHORIZE_NET_LOGIN_ID,
+                        "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
+                    },
+                    "subscription": {
+                        "name": f"{new_plan.name} (Scheduled)",
+                        "paymentSchedule": {
+                            "interval": {
+                                "length": interval_length,
+                                "unit": interval_unit,
+                            },
+                            "startDate": start_date.isoformat(),
+                            "totalOccurrences": "9999",
+                        },
+                        "amount": str(new_plan.price),
+                        "profile": {
+                            "customerProfileId": current_sub.customer_profile_id,
+                            "customerPaymentProfileId": current_sub.customer_payment_profile_id,
+                        },
+                    },
+                }
+            }
 
-        result = create_data.get("ARBCreateSubscriptionResponse", create_data)
-        messages = result.get("messages", {})
+            create_resp = requests.post(
+                settings.AUTHORIZE_NET_ENDPOINT,
+                json=create_payload,
+                timeout=30,
+            )
+            create_data = parse_authorize_response(create_resp)
 
-        if messages.get("resultCode") != "Ok":
-            error_messages = messages.get("message", [])
-            if isinstance(error_messages, dict):
-                error_messages = [error_messages]
-            
-            error_text = "; ".join(
-                f"{m.get('code', 'N/A')}: {m.get('text', 'Unknown error')}"
-                for m in error_messages
-            ) if error_messages else "Unknown error"
+            if create_data.get("messages", {}).get("resultCode") != "Ok":
+                raise Exception(f"Scheduled subscription creation failed: {create_data}")
 
-            logger.error(f"Downgrade failed: {error_text}")
-            return JsonResponse({"error": f"Downgrade failed: {error_text}"}, status=400)
+            new_subscription_id = create_data.get("subscriptionId")
+            if not new_subscription_id:
+                raise Exception("No subscription ID returned from Authorize.Net")
 
-        new_subscription_id = result.get("subscriptionId")
+            # 2️⃣ Cancel CURRENT subscription (prevents renewal)
+            cancel_payload = {
+                "ARBCancelSubscriptionRequest": {
+                    "merchantAuthentication": {
+                        "name": settings.AUTHORIZE_NET_LOGIN_ID,
+                        "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
+                    },
+                    "subscriptionId": current_sub.authorize_subscription_id,
+                }
+            }
 
-        if not new_subscription_id:
-            return JsonResponse({"error": "No subscription ID returned"}, status=400)
+            cancel_resp = requests.post(
+                settings.AUTHORIZE_NET_ENDPOINT,
+                json=cancel_payload,
+                timeout=30,
+            )
+            cancel_data = parse_authorize_response(cancel_resp)
 
-        # Store the new subscription ID and pending plan
-        current_sub.pending_subscription = new_plan
-        current_sub.pending_authorize_subscription_id = new_subscription_id
-        current_sub.save(update_fields=['pending_subscription', 'pending_authorize_subscription_id'])
+            if cancel_data.get("messages", {}).get("resultCode") != "Ok":
+                raise Exception("Failed to cancel current subscription")
 
-        logger.info(f"✓ Downgrade scheduled to {new_plan.name}, new ARB ID: {new_subscription_id}")
+            # 3️⃣ Update local DB state
+            current_sub.cancel_at_period_end = True
+            current_sub.pending_subscription = new_plan
+            current_sub.pending_authorize_subscription_id = new_subscription_id
+            current_sub.save(
+                update_fields=[
+                    "cancel_at_period_end",
+                    "pending_subscription",
+                    "pending_authorize_subscription_id",
+                ]
+            )
 
-        return JsonResponse({
-            "success": True,
-            "message": f"Your plan will change to {new_plan.name} (${new_plan.price}/{new_plan.billing_type}) on your next billing date: {current_sub.expires_at.strftime('%B %d, %Y')}. You'll continue to enjoy {current_sub.subscription.name} benefits until then.",
-            "downgrade": True,
-            "effective_date": current_sub.expires_at.isoformat()
-        })
+            return JsonResponse({
+                "success": True,
+                "downgrade": True,
+                "message": (
+                    f"Your plan will change to {new_plan.name} "
+                    f"on {current_sub.expires_at.strftime('%B %d, %Y')}. "
+                    f"You will continue to enjoy {current_sub.subscription.name} "
+                    f"until then."
+                ),
+                "effective_date": current_sub.expires_at.isoformat(),
+            })
 
     except Exception as e:
         logger.exception("Downgrade failed")
-        return JsonResponse({"error": str(e)}, status=500)
+        return JsonResponse(
+            {"error": "Unable to downgrade subscription. Please contact support."},
+            status=500
+        )
+
 
 
 @login_required
