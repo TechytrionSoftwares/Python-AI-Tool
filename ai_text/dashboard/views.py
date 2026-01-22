@@ -14,6 +14,7 @@ from .models import Recording
 from dateutil.relativedelta import relativedelta
 from django.utils import timezone
 from difflib import ndiff
+from django.db import transaction
 from dashboard.utils.id_encoder import decode_id, encode_id
 from django.http import HttpResponseNotFound
 import html
@@ -1213,7 +1214,7 @@ def speech_tx(request):
         rejected_files = []
 
         for file in files:
-            # ✅ VALIDATE FILE BEFORE PROCESSING
+            # VALIDATE FILE BEFORE PROCESSING
             is_valid, error_msg, file_type = validate_audio_video_file(file)
             
             if not is_valid:
@@ -1417,586 +1418,429 @@ def cancel_subscription(request):
             status=500
         )
 
+logger = logging.getLogger(__name__)
+
+
+def _cancel_subscription_in_authorize(subscription_id):
+    """Cancel a subscription in Authorize.Net"""
+    cancel_payload = {
+        "ARBCancelSubscriptionRequest": {
+            "merchantAuthentication": {
+                "name": settings.AUTHORIZE_NET_LOGIN_ID,
+                "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
+            },
+            "subscriptionId": subscription_id,
+        }
+    }
+
+    try:
+        response = requests.post(
+            settings.AUTHORIZE_NET_ENDPOINT,
+            json=cancel_payload,
+            timeout=30,
+        )
+        data = parse_authorize_response(response)
+        logger.info(f"Cancelled subscription {subscription_id}: {data}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to cancel subscription {subscription_id}: {e}")
+        return False
+
+
+def _cancel_pending_subscription_if_any(current_sub):
+    """Cancel any pending future subscription"""
+    if not current_sub.pending_authorize_subscription_id:
+        return
+
+    _cancel_subscription_in_authorize(current_sub.pending_authorize_subscription_id)
+
+    current_sub.pending_subscription = None
+    current_sub.pending_authorize_subscription_id = None
+    current_sub.save(update_fields=[
+        "pending_subscription",
+        "pending_authorize_subscription_id"
+    ])
+
+
+def parse_authorize_response(response):
+    """Safely parse Authorize.Net responses (handles UTF-8 BOM)"""
+    return json.loads(response.content.decode("utf-8-sig"))
+
+
 @login_required
 @require_POST
 def change_subscription_plan(request):
-    """
-    Handle upgrade/downgrade subscription
-    - Immediate upgrade with prorated charge
-    - Downgrade scheduled for next billing cycle
-    """
-    
     try:
         data = json.loads(request.body)
-        new_subscription_id = data.get('subscription_id')
+        new_subscription_id = data.get("subscription_id")
     except json.JSONDecodeError:
         return JsonResponse({"error": "Invalid request data"}, status=400)
 
     if not new_subscription_id:
         return JsonResponse({"error": "Subscription ID required"}, status=400)
 
-    # Get current subscription
-    current_sub = UserSubscription.objects.filter(
-        user=request.user,
-        active=True
-    ).select_related('subscription').first()
+    with transaction.atomic():
+        current_sub = (
+            UserSubscription.objects
+            .select_for_update()
+            .filter(user=request.user, active=True)
+            .select_related("subscription")
+            .first()
+        )
 
-    if not current_sub:
-        return JsonResponse({"error": "No active subscription found"}, status=400)
+        if not current_sub:
+            return JsonResponse({"error": "No active subscription found"}, status=400)
 
-    # Get new subscription plan
+        if current_sub.is_processing:
+            return JsonResponse(
+                {"error": "Subscription change already in progress"},
+                status=409
+            )
+
+        current_sub.is_processing = True
+        current_sub.save(update_fields=["is_processing"])
+
     try:
-        new_plan = Subscription.objects.get(id=new_subscription_id, status='published')
+        new_plan = Subscription.objects.get(id=new_subscription_id, status="published")
     except Subscription.DoesNotExist:
+        _release_lock(current_sub)
         return JsonResponse({"error": "Invalid subscription plan"}, status=400)
 
-    # Check if it's the same plan
     if current_sub.subscription.id == new_plan.id:
+        _release_lock(current_sub)
         return JsonResponse({"error": "You are already on this plan"}, status=400)
 
-    # Check if billing types match
     if current_sub.subscription.billing_type != new_plan.billing_type:
+        _release_lock(current_sub)
         return JsonResponse(
-            {"error": "Cannot switch between monthly and yearly plans. Please cancel and resubscribe."},
-            status=400
+            {"error": "Cannot switch between monthly and yearly plans."},
+            status=400,
         )
 
-    # Determine if upgrade or downgrade
-    is_upgrade = new_plan.price > current_sub.subscription.price
+    try:
+        if new_plan.price > current_sub.subscription.price:
+            response = _safe_upgrade_subscription(request, current_sub, new_plan)
+        else:
+            response = _handle_downgrade(request, current_sub, new_plan)
+    finally:
+        _release_lock(current_sub)
 
-    # Check if we have profile IDs
-    if not current_sub.customer_profile_id or not current_sub.customer_payment_profile_id:
-        return JsonResponse(
-            {"error": "Payment profile missing. Please contact support."},
-            status=400
-        )
+    return response
 
-    if is_upgrade:
-        # UPGRADE: Immediate prorated charge + update subscription
-        return _handle_upgrade_prorated(request, current_sub, new_plan)
-    else:
-        # DOWNGRADE: Schedule for next billing cycle
-        return _handle_downgrade(request, current_sub, new_plan)
+
+def _release_lock(current_sub):
+    """Release processing lock"""
+    current_sub.is_processing = False
+    current_sub.save(update_fields=["is_processing"])
 
 
 def _calculate_prorated_amount(current_sub, new_plan):
-    """
-    Calculate prorated upgrade charge based on remaining time
-    """
-
-    # Safety checks
+    """Calculate prorated upgrade charge based on remaining time"""
     if not current_sub.started_at or not current_sub.expires_at:
-        return new_plan.price
+        return Decimal("0.00")
 
     now = timezone.now()
 
-    # 🔒 Prevent invalid time math
+    # If subscription expired, no proration
     if now >= current_sub.expires_at:
-        return new_plan.price
+        return Decimal("0.00")
 
     total_seconds = (current_sub.expires_at - current_sub.started_at).total_seconds()
     remaining_seconds = (current_sub.expires_at - now).total_seconds()
 
     if total_seconds <= 0 or remaining_seconds <= 0:
-        return new_plan.price
+        return Decimal("0.00")
 
     remaining_ratio = Decimal(remaining_seconds) / Decimal(total_seconds)
 
     old_price = Decimal(current_sub.subscription.price)
     new_price = Decimal(new_plan.price)
 
-    # Only charge the DIFFERENCE for remaining time
+    # Charge the DIFFERENCE for remaining time
     prorated_charge = (new_price - old_price) * remaining_ratio
 
-    # Never negative, always rounded
+    # Never negative, always rounded to 2 decimals
     return max(prorated_charge.quantize(Decimal("0.01")), Decimal("0.00"))
 
-def _handle_upgrade_prorated(request, current_sub, new_plan):
+def _cancel_authorize_subscription(subscription_id):
+    payload = {
+        "ARBCancelSubscriptionRequest": {
+            "merchantAuthentication": {
+                "name": settings.AUTHORIZE_NET_LOGIN_ID,
+                "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
+            },
+            "subscriptionId": subscription_id
+        }
+    }
+
+    resp = requests.post(
+        settings.AUTHORIZE_NET_ENDPOINT,
+        json=payload,
+        timeout=30,
+    )
+
+    data = parse_authorize_response(resp)
+    if data.get("messages", {}).get("resultCode") != "Ok":
+        raise Exception(f"Failed to cancel ARB subscription {subscription_id}")
+
+
+
+def _safe_upgrade_subscription(request, current_sub, new_plan):
     """
-    Handle upgrade with prorated billing
+    STABLE UPGRADE FLOW (AUTHORIZE.NET SAFE)
+
+    - Cancel any extra/pending ARB subscriptions
+    - Charge proration immediately
+    - Update ARB amount for next billing
+    - Upgrade user access immediately
+    - Keep ONE ARB subscription only
     """
-    
-    # Calculate prorated amount
+
+    logger.info(f"Upgrading {current_sub.subscription.name} → {new_plan.name}")
+
     prorated_amount = _calculate_prorated_amount(current_sub, new_plan)
-    
+    old_price = current_sub.subscription.price
+    new_price = new_plan.price
+
     try:
-        # STEP 1: Charge prorated amount as one-time transaction
-        if prorated_amount > 0:
-            charge_payload = {
-                "createTransactionRequest": {
-                    "merchantAuthentication": {
-                        "name": settings.AUTHORIZE_NET_LOGIN_ID,
-                        "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
-                    },
-                    "transactionRequest": {
-                        "transactionType": "authCaptureTransaction",
-                        "amount": str(round(prorated_amount, 2)),
-                        "profile": {
-                            "customerProfileId": current_sub.customer_profile_id,
-                            "paymentProfile": {
-                                "paymentProfileId": current_sub.customer_payment_profile_id
-                            }
+        with transaction.atomic():
+
+            # 0. Cancel pending downgrade ARB (if exists)
+            if current_sub.pending_authorize_subscription_id:
+                logger.warning(
+                    f"Cancelling pending ARB "
+                    f"{current_sub.pending_authorize_subscription_id}"
+                )
+                _cancel_authorize_subscription(
+                    current_sub.pending_authorize_subscription_id
+                )
+                current_sub.pending_authorize_subscription_id = None
+                current_sub.pending_subscription = None
+
+            # 1. Safety: ensure ONLY ONE ARB exists
+            # If multiple ARBs were accidentally created earlier,
+            # cancel the one that does NOT match the active subscription
+            if (
+                current_sub.authorize_subscription_id
+                and current_sub.authorize_subscription_id
+                != current_sub.pending_authorize_subscription_id
+            ):
+                # Nothing extra to cancel here normally,
+                # but this block exists for future-proofing
+                pass
+
+            # 2. Charge proration
+            if prorated_amount > 0:
+                charge_payload = {
+                    "createTransactionRequest": {
+                        "merchantAuthentication": {
+                            "name": settings.AUTHORIZE_NET_LOGIN_ID,
+                            "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
                         },
-                        "lineItems": {
-                            "lineItem": {
-                                "itemId": "UPGRADE",
-                                "name": f"Upgrade to {new_plan.name}",
-                                "description": "Prorated upgrade charge",
-                                "quantity": "1",
-                                "unitPrice": str(round(prorated_amount, 2))
+                        "transactionRequest": {
+                            "transactionType": "authCaptureTransaction",
+                            "amount": str(prorated_amount),
+                            "profile": {
+                                "customerProfileId": current_sub.customer_profile_id,
+                                "paymentProfile": {
+                                    "paymentProfileId": current_sub.customer_payment_profile_id
+                                }
                             }
                         }
                     }
                 }
-            }
-            
-            logger.info(f"Charging prorated amount: ${prorated_amount}")
-            
-            charge_resp = requests.post(
-                settings.AUTHORIZE_NET_ENDPOINT,
-                json=charge_payload,
-                timeout=30,
-            )
-            charge_resp.encoding = "utf-8-sig"
-            charge_data = json.loads(charge_resp.text)
-            
-            logger.info(f"Charge response: {json.dumps(charge_data, indent=2)}")
-            
-            # Check charge response
-            charge_result = charge_data.get("transactionResponse", {})
-            response_code = charge_result.get("responseCode")
-            
-            if response_code != "1":  # 1 = Approved
-                error_text = charge_result.get("errors", [{}])[0].get("errorText", "Charge failed")
-                logger.error(f"Prorated charge failed: {error_text}")
-                return JsonResponse({
-                    "error": f"Upgrade charge failed: {error_text}"
-                }, status=400)
-            
-            transaction_id = charge_result.get("transId")
-            logger.info(f"✓ Prorated charge successful: ${prorated_amount}, Transaction ID: {transaction_id}")
-            
-            # Record payment
-            Payment.objects.create(
-                user=request.user,
-                subscription=new_plan,
-                amount=prorated_amount,
-                transaction_id=transaction_id,
-                status="success",
-                response_code="OK",
-            )
-        else:
-            logger.info("No prorated charge needed (amount is $0 or negative)")
-        
-        # STEP 2: Update existing ARB subscription amount
-        update_payload = {
-            "ARBUpdateSubscriptionRequest": {
-                "merchantAuthentication": {
-                    "name": settings.AUTHORIZE_NET_LOGIN_ID,
-                    "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
-                },
-                "subscriptionId": current_sub.authorize_subscription_id,
-                "subscription": {
-                    "name": f"{new_plan.name}",
-                    "amount": str(new_plan.price),
-                }
-            }
-        }
-        
-        logger.info(f"Updating subscription to new amount: ${new_plan.price}")
-        
-        update_resp = requests.post(
-            settings.AUTHORIZE_NET_ENDPOINT,
-            json=update_payload,
-            timeout=30,
-        )
-        update_resp.encoding = "utf-8-sig"
-        update_data = json.loads(update_resp.text)
-        
-        logger.info(f"Update response: {json.dumps(update_data, indent=2)}")
-        
-        # Check update response
-        update_result = update_data.get("ARBUpdateSubscriptionResponse", update_data)
-        update_messages = update_result.get("messages", {})
-        
-        if update_messages.get("resultCode") != "Ok":
-            error_messages = update_messages.get("message", [])
-            if isinstance(error_messages, dict):
-                error_messages = [error_messages]
-            
-            error_text = "; ".join(
-                f"{m.get('code', 'N/A')}: {m.get('text', 'Unknown error')}"
-                for m in error_messages
-            ) if error_messages else "Update failed"
-            
-            logger.error(f"Subscription update failed: {error_text}")
-            return JsonResponse({
-                "error": f"Subscription update failed: {error_text}. You were charged ${prorated_amount} but the subscription wasn't updated. Please contact support."
-            }, status=400)
-        
-        logger.info(f"✓ Subscription updated successfully")
-        
-        # STEP 3: Update database
-        now = timezone.now()
 
-        current_sub.subscription = new_plan
-        current_sub.started_at = now
-        current_sub.expires_at = calculate_expires_at(
-            now,
-            new_plan.billing_type
-        )
-        current_sub.save(update_fields=["subscription", "started_at", "expires_at"])
+                charge_resp = requests.post(
+                    settings.AUTHORIZE_NET_ENDPOINT,
+                    json=charge_payload,
+                    timeout=30,
+                )
 
-        
-        logger.info(f"✓ Upgraded successfully to {new_plan.name}")
-        
-        # Return ONLY the essential message
-        return JsonResponse({
-            "success": True,
-            "message": f"Successfully upgraded to {new_plan.name}! You were charged ${round(prorated_amount, 2)} for the remaining period. Your next billing will be ${new_plan.price} on {current_sub.expires_at.strftime('%B %d, %Y')}."
-        })
+                charge_data = parse_authorize_response(charge_resp)
+                if charge_data.get("transactionResponse", {}).get("responseCode") != "1":
+                    raise Exception("Proration payment failed")
 
-    except Exception as e:
-        logger.exception("Upgrade failed")
-        return JsonResponse({"error": str(e)}, status=500)
-    """
-    Handle upgrade with prorated billing
-    """
-    
-    # Calculate prorated amount
-    prorated_amount = _calculate_prorated_amount(current_sub, new_plan)
-    
-    try:
-        # STEP 1: Charge prorated amount as one-time transaction
-        if prorated_amount > 0:
-            charge_payload = {
-                "createTransactionRequest": {
-                    "merchantAuthentication": {
-                        "name": settings.AUTHORIZE_NET_LOGIN_ID,
-                        "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
-                    },
-                    "transactionRequest": {
-                        "transactionType": "authCaptureTransaction",
-                        "amount": str(round(prorated_amount, 2)),
-                        "profile": {
-                            "customerProfileId": current_sub.customer_profile_id,
-                            "paymentProfile": {
-                                "paymentProfileId": current_sub.customer_payment_profile_id
-                            }
+                Payment.objects.create(
+                    user=request.user,
+                    subscription=new_plan,
+                    amount=prorated_amount,
+                    transaction_id=charge_data["transactionResponse"]["transId"],
+                    status="success",
+                )
+
+            # 3. Update ARB amount if price changed
+            if old_price != new_price and current_sub.authorize_subscription_id:
+                arb_payload = {
+                    "ARBUpdateSubscriptionRequest": {
+                        "merchantAuthentication": {
+                            "name": settings.AUTHORIZE_NET_LOGIN_ID,
+                            "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
                         },
-                        "lineItems": {
-                            "lineItem": {
-                                "itemId": "UPGRADE",
-                                "name": f"Upgrade to {new_plan.name}",
-                                "description": "Prorated upgrade charge",
-                                "quantity": "1",
-                                "unitPrice": str(round(prorated_amount, 2))
-                            }
+                        "subscriptionId": current_sub.authorize_subscription_id,
+                        "subscription": {
+                            "amount": str(new_price)
                         }
                     }
                 }
-            }
-            
-            logger.info(f"Charging prorated amount: ${prorated_amount}")
-            
-            charge_resp = requests.post(
-                settings.AUTHORIZE_NET_ENDPOINT,
-                json=charge_payload,
-                timeout=30,
-            )
-            charge_resp.encoding = "utf-8-sig"
-            charge_data = json.loads(charge_resp.text)
-            
-            logger.info(f"Charge response: {json.dumps(charge_data, indent=2)}")
-            
-            # Check charge response
-            charge_result = charge_data.get("transactionResponse", {})
-            response_code = charge_result.get("responseCode")
-            
-            if response_code != "1":  # 1 = Approved
-                error_text = charge_result.get("errors", [{}])[0].get("errorText", "Charge failed")
-                logger.error(f"Prorated charge failed: {error_text}")
-                return JsonResponse({
-                    "error": f"Upgrade charge failed: {error_text}"
-                }, status=400)
-            
-            transaction_id = charge_result.get("transId")
-            logger.info(f"✓ Prorated charge successful: ${prorated_amount}, Transaction ID: {transaction_id}")
-            
-            # Record payment
-            Payment.objects.create(
-                user=request.user,
-                subscription=new_plan,
-                amount=prorated_amount,
-                transaction_id=transaction_id,
-                status="success",
-                response_code="OK",
-            )
-        else:
-            logger.info("No prorated charge needed (amount is $0 or negative)")
-        
-        # STEP 2: Cancel OLD subscription
-        cancel_payload = {
-            "ARBCancelSubscriptionRequest": {
-                "merchantAuthentication": {
-                    "name": settings.AUTHORIZE_NET_LOGIN_ID,
-                    "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
-                },
-                "subscriptionId": current_sub.authorize_subscription_id,
-            }
-        }
-        
-        logger.info(f"Cancelling old subscription: {current_sub.authorize_subscription_id}")
-        
-        cancel_resp = requests.post(
-            settings.AUTHORIZE_NET_ENDPOINT,
-            json=cancel_payload,
-            timeout=30,
-        )
-        cancel_resp.encoding = "utf-8-sig"
-        cancel_data = json.loads(cancel_resp.text)
-        
-        logger.info(f"Cancel response: {json.dumps(cancel_data, indent=2)}")
-        
-        # STEP 3: Create NEW subscription at new price starting at current expiry date
-        # Determine interval
-        if new_plan.billing_type == "monthly":
-            interval_length = 1
-            interval_unit = "months"
-        elif new_plan.billing_type == "yearly":
-            interval_length = 12
-            interval_unit = "months"
-        else:
-            interval_length = 1
-            interval_unit = "months"
-        
-        # Start date = current expiry date (when the next billing SHOULD happen)
-        start_date = current_sub.expires_at.date() if current_sub.expires_at else timezone.now().date()
-        
-        create_payload = {
-            "ARBCreateSubscriptionRequest": {
-                "merchantAuthentication": {
-                    "name": settings.AUTHORIZE_NET_LOGIN_ID,
-                    "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
-                },
-                "subscription": {
-                    "name": f"{new_plan.name}",
-                    "paymentSchedule": {
-                        "interval": {
-                            "length": interval_length,
-                            "unit": interval_unit,
-                        },
-                        "startDate": start_date.isoformat(),
-                        "totalOccurrences": "9999",
-                    },
-                    "amount": str(new_plan.price),
-                    "profile": {
-                        "customerProfileId": current_sub.customer_profile_id,
-                        "customerPaymentProfileId": current_sub.customer_payment_profile_id,
-                    },
-                },
-            }
-        }
-        
-        logger.info(f"Creating new subscription at ${new_plan.price}, starts: {start_date}")
-        
-        create_resp = requests.post(
-            settings.AUTHORIZE_NET_ENDPOINT,
-            json=create_payload,
-            timeout=30,
-        )
-        create_resp.encoding = "utf-8-sig"
-        create_data = json.loads(create_resp.text)
-        
-        logger.info(f"Create response: {json.dumps(create_data, indent=2)}")
-        
-        # Check create response
-        create_result = create_data.get("ARBCreateSubscriptionResponse", create_data)
-        create_messages = create_result.get("messages", {})
-        
-        if create_messages.get("resultCode") != "Ok":
-            error_messages = create_messages.get("message", [])
-            if isinstance(error_messages, dict):
-                error_messages = [error_messages]
-            
-            error_text = "; ".join(
-                f"{m.get('code', 'N/A')}: {m.get('text', 'Unknown error')}"
-                for m in error_messages
-            ) if error_messages else "Failed to create new subscription"
-            
-            logger.error(f"New subscription creation failed: {error_text}")
-            return JsonResponse({
-                "error": f"Upgrade failed: {error_text}. You were charged ${prorated_amount}. Please contact support."
-            }, status=400)
-        
-        new_subscription_id = create_result.get("subscriptionId")
-        
-        if not new_subscription_id:
-            return JsonResponse({
-                "error": "No subscription ID returned. Please contact support."
-            }, status=400)
-        
-        logger.info(f"✓ New subscription created: {new_subscription_id}")
-        
-        # STEP 4: Update database
-        current_sub.subscription = new_plan
-        current_sub.authorize_subscription_id = new_subscription_id
-        current_sub.save(update_fields=['subscription', 'authorize_subscription_id'])
-        
-        logger.info(f"✓ Upgraded successfully to {new_plan.name}")
-        
-        return JsonResponse({
-        "success": True,
-        "message": f"Successfully upgraded to {new_plan.name}! Your next billing will be ${new_plan.price} on {current_sub.expires_at.strftime('%B %d, %Y')}.",
-        "prorated_charge": str(round(prorated_amount, 2)),
-        "new_plan_name": new_plan.name,
-        "new_plan_price": str(new_plan.price),
-        "next_billing_date": current_sub.expires_at.strftime('%B %d, %Y')
-    })
 
-    except Exception as e:
-        logger.exception("Upgrade failed")
-        return JsonResponse({"error": str(e)}, status=500)
-    """
-    Handle upgrade with prorated billing
-    """
-    
-    # Calculate prorated amount
-    prorated_amount = _calculate_prorated_amount(current_sub, new_plan)
-    
-    try:
-        # STEP 1: Charge prorated amount as one-time transaction
-        if prorated_amount > 0:
-            charge_payload = {
-                "createTransactionRequest": {
-                    "merchantAuthentication": {
-                        "name": settings.AUTHORIZE_NET_LOGIN_ID,
-                        "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
-                    },
-                    "transactionRequest": {
-                        "transactionType": "authCaptureTransaction",
-                        "amount": str(round(prorated_amount, 2)),
-                        "profile": {
-                            "customerProfileId": current_sub.customer_profile_id,
-                            "paymentProfile": {
-                                "paymentProfileId": current_sub.customer_payment_profile_id
-                            }
-                        },
-                        "lineItems": {
-                            "lineItem": {
-                                "itemId": "UPGRADE",
-                                "name": f"Upgrade to {new_plan.name}",
-                                "description": "Prorated upgrade charge",
-                                "quantity": "1",
-                                "unitPrice": str(round(prorated_amount, 2))
-                            }
-                        }
-                    }
-                }
-            }
-            
-            logger.info(f"Charging prorated amount: ${prorated_amount}")
-            
-            charge_resp = requests.post(
-                settings.AUTHORIZE_NET_ENDPOINT,
-                json=charge_payload,
-                timeout=30,
-            )
-            charge_resp.encoding = "utf-8-sig"
-            charge_data = json.loads(charge_resp.text)
-            
-            logger.info(f"Charge response: {json.dumps(charge_data, indent=2)}")
-            
-            # Check charge response
-            charge_result = charge_data.get("transactionResponse", {})
-            response_code = charge_result.get("responseCode")
-            
-            if response_code != "1":  # 1 = Approved
-                error_text = charge_result.get("errors", [{}])[0].get("errorText", "Charge failed")
-                logger.error(f"Prorated charge failed: {error_text}")
-                return JsonResponse({
-                    "error": f"Upgrade charge failed: {error_text}"
-                }, status=400)
-            
-            transaction_id = charge_result.get("transId")
-            logger.info(f"✓ Prorated charge successful: ${prorated_amount}, Transaction ID: {transaction_id}")
-            
-            # Record payment
-            Payment.objects.create(
-                user=request.user,
-                subscription=new_plan,
-                amount=prorated_amount,
-                transaction_id=transaction_id,
-                status="success",
-                response_code="OK",
-            )
-        else:
-            logger.info("No prorated charge needed (amount is $0 or negative)")
-        
-        # STEP 2: Update existing ARB subscription amount
-        update_payload = {
-            "ARBUpdateSubscriptionRequest": {
-                "merchantAuthentication": {
-                    "name": settings.AUTHORIZE_NET_LOGIN_ID,
-                    "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
-                },
-                "subscriptionId": current_sub.authorize_subscription_id,
-                "subscription": {
-                    "name": f"{new_plan.name}",
-                    "amount": str(new_plan.price),
-                }
-            }
-        }
-        
-        logger.info(f"Updating subscription to new amount: ${new_plan.price}")
-        
-        update_resp = requests.post(
-            settings.AUTHORIZE_NET_ENDPOINT,
-            json=update_payload,
-            timeout=30,
-        )
-        update_resp.encoding = "utf-8-sig"
-        update_data = json.loads(update_resp.text)
-        
-        logger.info(f"Update response: {json.dumps(update_data, indent=2)}")
-        
-        # Check update response
-        update_result = update_data.get("ARBUpdateSubscriptionResponse", update_data)
-        update_messages = update_result.get("messages", {})
-        
-        if update_messages.get("resultCode") != "Ok":
-            error_messages = update_messages.get("message", [])
-            if isinstance(error_messages, dict):
-                error_messages = [error_messages]
-            
-            error_text = "; ".join(
-                f"{m.get('code', 'N/A')}: {m.get('text', 'Unknown error')}"
-                for m in error_messages
-            ) if error_messages else "Update failed"
-            
-            logger.error(f"Subscription update failed: {error_text}")
-            return JsonResponse({
-                "error": f"Subscription update failed: {error_text}. You were charged ${prorated_amount} but the subscription wasn't updated. Please contact support."
-            }, status=400)
-        
-        logger.info(f"✓ Subscription updated successfully")
-        
-        # STEP 3: Update database
-        current_sub.subscription = new_plan
-        current_sub.save(update_fields=['subscription'])
-        
-        logger.info(f"✓ Upgraded successfully to {new_plan.name}")
-        
-        return JsonResponse({
-            "success": True,
-            "message": f"Successfully upgraded to {new_plan.name}! You were charged ${round(prorated_amount, 2)} for the remaining period. Your next billing will be ${new_plan.price} on {current_sub.expires_at.strftime('%B %d, %Y')}.",
-            "upgrade": True,
-            "prorated_charge": str(round(prorated_amount, 2))
-        })
+                arb_resp = requests.post(
+                    settings.AUTHORIZE_NET_ENDPOINT,
+                    json=arb_payload,
+                    timeout=30,
+                )
 
-    except Exception as e:
+                arb_data = parse_authorize_response(arb_resp)
+                if arb_data.get("messages", {}).get("resultCode") != "Ok":
+                    raise Exception(f"ARB update failed: {arb_data}")
+
+            # 4. Upgrade locally
+            current_sub.subscription = new_plan
+            current_sub.active = True
+            current_sub.cancel_at_period_end = False
+            current_sub.save(
+                update_fields=[
+                    "subscription",
+                    "active",
+                    "cancel_at_period_end",
+                    "pending_subscription",
+                    "pending_authorize_subscription_id",
+                ]
+            )
+
+            logger.info("Upgrade completed successfully")
+
+            return JsonResponse({
+                "success": True,
+                "message": (
+                    f"Successfully upgraded to {new_plan.name}. "
+                    f"Your billing date remains "
+                    f"{current_sub.expires_at.strftime('%B %d, %Y')}."
+                ),
+                "prorated_charge": str(prorated_amount) if prorated_amount > 0 else None,
+            })
+
+    except Exception:
         logger.exception("Upgrade failed")
-        return JsonResponse({"error": str(e)}, status=500)
+        return JsonResponse(
+            {"error": "Unable to upgrade subscription. Please contact support."},
+            status=500
+        )
+
+
+
+
+
+# def _handle_downgrade(request, current_sub, new_plan):
+#     """
+#     Handle subscription downgrades:
+#     - Schedule the downgrade to take effect at next billing date
+#     - User keeps current plan until then
+#     """
+    
+#     try:
+#         with transaction.atomic():
+#             # Cancel any existing pending subscription
+#             _cancel_pending_subscription_if_any(current_sub)
+
+#             # Calculate next billing date
+#             next_billing_date = current_sub.expires_at.date()
+#             today = timezone.now().date()
+            
+#             # If billing date passed, calculate next occurrence
+#             if next_billing_date <= today:
+#                 if new_plan.billing_type == "monthly":
+#                     next_month = today.replace(day=1) + timedelta(days=32)
+#                     try:
+#                         next_billing_date = next_month.replace(day=current_sub.started_at.day)
+#                     except ValueError:
+#                         next_billing_date = next_month.replace(day=28)
+#                 else:  # yearly
+#                     next_year = today.year + 1
+#                     try:
+#                         next_billing_date = today.replace(year=next_year, day=current_sub.started_at.day)
+#                     except ValueError:
+#                         next_billing_date = today.replace(year=next_year, day=28)
+            
+#             # Make sure it's in the future
+#             if next_billing_date <= today:
+#                 next_billing_date = today + timedelta(days=1)
+
+#             interval_length = 1 if new_plan.billing_type == "monthly" else 12
+
+#             # Create NEW subscription starting at next billing date
+#             create_payload = {
+#                 "ARBCreateSubscriptionRequest": {
+#                     "merchantAuthentication": {
+#                         "name": settings.AUTHORIZE_NET_LOGIN_ID,
+#                         "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
+#                     },
+#                     "subscription": {
+#                         "name": new_plan.name,
+#                         "paymentSchedule": {
+#                             "interval": {
+#                                 "length": interval_length,
+#                                 "unit": "months"
+#                             },
+#                             "startDate": next_billing_date.isoformat(),
+#                             "totalOccurrences": "9999",
+#                         },
+#                         "amount": str(new_plan.price),
+#                         "profile": {
+#                             "customerProfileId": current_sub.customer_profile_id,
+#                             "customerPaymentProfileId": current_sub.customer_payment_profile_id,
+#                         },
+#                     }
+#                 }
+#             }
+
+#             create_resp = requests.post(
+#                 settings.AUTHORIZE_NET_ENDPOINT,
+#                 json=create_payload,
+#                 timeout=30,
+#             )
+
+#             create_data = parse_authorize_response(create_resp)
+#             response = create_data.get("ARBCreateSubscriptionResponse", {})
+            
+#             # Check for errors
+#             result_code = response.get("messages", {}).get("resultCode")
+#             if result_code != "Ok":
+#                 messages = response.get("messages", {})
+#                 message_list = messages.get("message", [])
+#                 if message_list:
+#                     error_text = message_list[0].get("text", "Unknown error")
+#                 else:
+#                     error_text = "Subscription creation failed"
+                
+#                 raise Exception(error_text)
+            
+#             new_arb_id = response.get("subscriptionId")
+#             if not new_arb_id:
+#                 raise Exception("No subscription ID returned from Authorize.Net")
+
+#             # Store pending subscription info (DON'T cancel current yet)
+#             current_sub.pending_subscription = new_plan
+#             current_sub.pending_authorize_subscription_id = new_arb_id
+#             current_sub.save(update_fields=[
+#                 "pending_subscription",
+#                 "pending_authorize_subscription_id"
+#             ])
+
+#             return JsonResponse({
+#                 "success": True,
+#                 "message": (
+#                     f"Your plan will change to {new_plan.name} on "
+#                     f"{next_billing_date.strftime('%B %d, %Y')}. "
+#                     f"You'll continue to have access to {current_sub.subscription.name} until then."
+#                 ),
+#                 "effective_date": next_billing_date.strftime('%Y-%m-%d'),
+#             })
+
+#     except Exception as e:
+#         logger.exception("Downgrade failed")
+#         return JsonResponse({"error": str(e)}, status=500)
+
+
 
 @login_required
 @require_POST
@@ -2026,7 +1870,7 @@ def preview_plan_change(request):
         status="published"
     )
 
-    # ❗ Prevent invalid billing switches
+    # Prevent invalid billing switches
     if new_plan.billing_type != current_sub.subscription.billing_type:
         return JsonResponse({
             "error": "Cannot switch between monthly and yearly plans."
@@ -2037,7 +1881,7 @@ def preview_plan_change(request):
 
     is_upgrade = new_plan.price > current_sub.subscription.price
 
-    # 🔒 expires_at MUST exist
+    # expires_at MUST exist
     if not current_sub.expires_at:
         return JsonResponse({
             "error": "Billing cycle information missing. Please contact support."
@@ -2071,12 +1915,27 @@ def preview_plan_change(request):
 
 def _handle_downgrade(request, current_sub, new_plan):
     """
-    Handle downgrade - create new subscription scheduled for next billing cycle
+    SAFE DOWNGRADE FLOW (AUTHORIZE.NET)
+
+    - Create NEW subscription starting next billing date
+    - Cancel CURRENT subscription so it does not renew
+    - Current plan remains active until expiry
+    - Prevent double billing
     """
-    
-    start_date = current_sub.expires_at.date() if current_sub.expires_at else timezone.now().date()
-    
-    # Determine interval for Authorize.Net
+
+    if not current_sub.authorize_subscription_id:
+        return JsonResponse(
+            {"error": "No active subscription found."},
+            status=400
+        )
+
+    start_date = (
+        current_sub.expires_at.date()
+        if current_sub.expires_at
+        else timezone.now().date()
+    )
+
+    # Determine interval
     if new_plan.billing_type == "monthly":
         interval_length = 1
         interval_unit = "months"
@@ -2087,84 +1946,101 @@ def _handle_downgrade(request, current_sub, new_plan):
         interval_length = 1
         interval_unit = "months"
 
-    # Create new ARB subscription at lower price (starts at next billing cycle)
-    payload = {
-        "ARBCreateSubscriptionRequest": {
-            "merchantAuthentication": {
-                "name": settings.AUTHORIZE_NET_LOGIN_ID,
-                "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
-            },
-            "subscription": {
-                "name": f"{new_plan.name} (Scheduled)",
-                "paymentSchedule": {
-                    "interval": {
-                        "length": interval_length,
-                        "unit": interval_unit,
-                    },
-                    "startDate": start_date.isoformat(),
-                    "totalOccurrences": "9999",
-                },
-                "amount": str(new_plan.price),
-                "profile": {
-                    "customerProfileId": current_sub.customer_profile_id,
-                    "customerPaymentProfileId": current_sub.customer_payment_profile_id,
-                },
-            },
-        }
-    }
-
-    logger.info(f"Downgrade payload: {json.dumps(payload, indent=2)}")
-
     try:
-        # Create new subscription
-        create_resp = requests.post(
-            settings.AUTHORIZE_NET_ENDPOINT,
-            json=payload,
-            timeout=30,
-        )
-        create_resp.encoding = "utf-8-sig"
-        create_data = json.loads(create_resp.text)
+        with transaction.atomic():
 
-        logger.info(f"Downgrade create response: {json.dumps(create_data, indent=2)}")
+            # 1️⃣ Create NEW subscription (starts next billing)
+            create_payload = {
+                "ARBCreateSubscriptionRequest": {
+                    "merchantAuthentication": {
+                        "name": settings.AUTHORIZE_NET_LOGIN_ID,
+                        "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
+                    },
+                    "subscription": {
+                        "name": f"{new_plan.name} (Scheduled)",
+                        "paymentSchedule": {
+                            "interval": {
+                                "length": interval_length,
+                                "unit": interval_unit,
+                            },
+                            "startDate": start_date.isoformat(),
+                            "totalOccurrences": "9999",
+                        },
+                        "amount": str(new_plan.price),
+                        "profile": {
+                            "customerProfileId": current_sub.customer_profile_id,
+                            "customerPaymentProfileId": current_sub.customer_payment_profile_id,
+                        },
+                    },
+                }
+            }
 
-        result = create_data.get("ARBCreateSubscriptionResponse", create_data)
-        messages = result.get("messages", {})
+            create_resp = requests.post(
+                settings.AUTHORIZE_NET_ENDPOINT,
+                json=create_payload,
+                timeout=30,
+            )
+            create_data = parse_authorize_response(create_resp)
 
-        if messages.get("resultCode") != "Ok":
-            error_messages = messages.get("message", [])
-            if isinstance(error_messages, dict):
-                error_messages = [error_messages]
-            
-            error_text = "; ".join(
-                f"{m.get('code', 'N/A')}: {m.get('text', 'Unknown error')}"
-                for m in error_messages
-            ) if error_messages else "Unknown error"
+            if create_data.get("messages", {}).get("resultCode") != "Ok":
+                raise Exception(f"Scheduled subscription creation failed: {create_data}")
 
-            logger.error(f"Downgrade failed: {error_text}")
-            return JsonResponse({"error": f"Downgrade failed: {error_text}"}, status=400)
+            new_subscription_id = create_data.get("subscriptionId")
+            if not new_subscription_id:
+                raise Exception("No subscription ID returned from Authorize.Net")
 
-        new_subscription_id = result.get("subscriptionId")
+            # 2️⃣ Cancel CURRENT subscription (prevents renewal)
+            cancel_payload = {
+                "ARBCancelSubscriptionRequest": {
+                    "merchantAuthentication": {
+                        "name": settings.AUTHORIZE_NET_LOGIN_ID,
+                        "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
+                    },
+                    "subscriptionId": current_sub.authorize_subscription_id,
+                }
+            }
 
-        if not new_subscription_id:
-            return JsonResponse({"error": "No subscription ID returned"}, status=400)
+            cancel_resp = requests.post(
+                settings.AUTHORIZE_NET_ENDPOINT,
+                json=cancel_payload,
+                timeout=30,
+            )
+            cancel_data = parse_authorize_response(cancel_resp)
 
-        # Store the new subscription ID and pending plan
-        current_sub.pending_subscription = new_plan
-        current_sub.pending_authorize_subscription_id = new_subscription_id
-        current_sub.save(update_fields=['pending_subscription', 'pending_authorize_subscription_id'])
+            if cancel_data.get("messages", {}).get("resultCode") != "Ok":
+                raise Exception("Failed to cancel current subscription")
 
-        logger.info(f"✓ Downgrade scheduled to {new_plan.name}, new ARB ID: {new_subscription_id}")
+            # 3️⃣ Update local DB state
+            current_sub.cancel_at_period_end = True
+            current_sub.pending_subscription = new_plan
+            current_sub.pending_authorize_subscription_id = new_subscription_id
+            current_sub.save(
+                update_fields=[
+                    "cancel_at_period_end",
+                    "pending_subscription",
+                    "pending_authorize_subscription_id",
+                ]
+            )
 
-        return JsonResponse({
-            "success": True,
-            "message": f"Your plan will change to {new_plan.name} (${new_plan.price}/{new_plan.billing_type}) on your next billing date: {current_sub.expires_at.strftime('%B %d, %Y')}. You'll continue to enjoy {current_sub.subscription.name} benefits until then.",
-            "downgrade": True,
-            "effective_date": current_sub.expires_at.isoformat()
-        })
+            return JsonResponse({
+                "success": True,
+                "downgrade": True,
+                "message": (
+                    f"Your plan will change to {new_plan.name} "
+                    f"on {current_sub.expires_at.strftime('%B %d, %Y')}. "
+                    f"You will continue to enjoy {current_sub.subscription.name} "
+                    f"until then."
+                ),
+                "effective_date": current_sub.expires_at.isoformat(),
+            })
 
     except Exception as e:
         logger.exception("Downgrade failed")
-        return JsonResponse({"error": str(e)}, status=500)
+        return JsonResponse(
+            {"error": "Unable to downgrade subscription. Please contact support."},
+            status=500
+        )
+
 
 
 @login_required

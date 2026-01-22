@@ -66,6 +66,7 @@ class UserSubscription(models.Model):
     cancel_at_period_end = models.BooleanField(default=False)
     customer_profile_id = models.CharField(max_length=64, null=True, blank=True)
     customer_payment_profile_id = models.CharField(max_length=64, null=True, blank=True)
+    is_processing = models.BooleanField(default=False)
     authorize_subscription_id = models.CharField(
         max_length=64,
         unique=True,

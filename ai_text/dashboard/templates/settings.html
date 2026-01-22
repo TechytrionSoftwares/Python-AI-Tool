@@ -35,16 +35,18 @@
   cursor: not-allowed;
 }
 
-.password-field {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
 .change-link {
-  font-size: 14px;
-  color: #5b6cff;
-  text-decoration: none;
+    text-decoration: none;
+    background: #5b6cff;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    margin-left: 20px;
 }
 
 .modal-overlay {
@@ -329,7 +331,7 @@
 
     <div class="field password-field">
       <label>Password</label>
-      <input type="password" value="************" disabled style="width:440px;">
+      <input type="password" value="************" disabled style="width:450px;">
       <a href="javascript:void(0)" class="change-link" onclick="openPasswordModal()">
         Change Password
       </a>
@@ -541,6 +543,14 @@
     <div class="plan-grid" id="planGrid">
       <!-- Plans will be loaded here -->
     </div>
+    
+    <!-- Proration Preview -->
+    <div id="prorationPreview" style="
+      margin-top: 15px;
+      font-size: 14px;
+      color: #111;
+    ">
+    </div>
 
     <div class="modal-actions">
       <button type="button" onclick="closePlanChangeModal()">Cancel</button>
@@ -567,10 +577,13 @@
 </div>
 
 <script>
+let planChangeInProgress = false;
 let selectedPlanId = null;
 let currentPlanPrice = {{ active_subscription.subscription.price|default:0 }};
 
-// Plan Change Modal Functions
+// ----------------------------------------------------
+// PLAN CHANGE MODALS
+// ----------------------------------------------------
 function openPlanChangeModal() {
   document.getElementById("planChangeModal").style.display = "flex";
   loadAvailablePlans();
@@ -578,17 +591,20 @@ function openPlanChangeModal() {
 
 function closePlanChangeModal() {
   document.getElementById("planChangeModal").style.display = "none";
-  selectedPlanId = null;
+  // ❌ DO NOT reset selectedPlanId here
 }
 
 function closeConfirmationModal() {
   document.getElementById("confirmationModal").style.display = "none";
+  selectedPlanId = null; // ✅ reset only here
 }
 
+// ----------------------------------------------------
+// LOAD PLANS
+// ----------------------------------------------------
 function loadAvailablePlans() {
-  const currentBillingType = "{{ active_subscription.subscription.billing_type }}";
   const currentPlanId = {{ active_subscription.subscription.id|default:0 }};
-  
+
   const plans = [
     {% for plan in all_plans %}
     {
@@ -603,11 +619,6 @@ function loadAvailablePlans() {
 
   const grid = document.getElementById("planGrid");
   grid.innerHTML = "";
-
-  if (plans.length === 0) {
-    grid.innerHTML = '<p style="color: #666;">No plans available for your billing type.</p>';
-    return;
-  }
 
   plans.forEach(plan => {
     const card = document.createElement("div");
@@ -630,34 +641,31 @@ function loadAvailablePlans() {
 
     if (!plan.is_current) {
       card.onclick = () => selectPlan(plan.id, card);
-    } else {
-      card.style.cursor = 'default';
     }
 
     grid.appendChild(card);
   });
 }
 
-function selectPlan(planId, cardElement) {
-  document.querySelectorAll(".plan-card").forEach(c => c.classList.remove("selected"));
-  cardElement.classList.add("selected");
+// ----------------------------------------------------
+// SELECT PLAN
+// ----------------------------------------------------
+function selectPlan(planId, card) {
+  document.querySelectorAll(".plan-card")
+    .forEach(c => c.classList.remove("selected"));
+
+  card.classList.add("selected");
   selectedPlanId = planId;
 }
 
+// ----------------------------------------------------
+// PREVIEW CHANGE
+// ----------------------------------------------------
 function previewPlanChange() {
   if (!selectedPlanId) {
     alert("Please select a plan");
     return;
   }
-
-  const errorDiv = document.getElementById("planChangeErrors");
-  errorDiv.textContent = "";
-
-  // Show loading
-  const continueBtn = document.querySelector('#planChangeModal .modal-actions .primary');
-  const originalText = continueBtn.textContent;
-  continueBtn.disabled = true;
-  continueBtn.textContent = "Loading...";
 
   fetch("{% url 'preview_plan_change' %}", {
     method: "POST",
@@ -669,103 +677,138 @@ function previewPlanChange() {
   })
   .then(res => res.json())
   .then(data => {
-    continueBtn.disabled = false;
-    continueBtn.textContent = originalText;
-
-    if (data.success) {
-      // Show confirmation modal with details
-      showConfirmationModal(data);
-      closePlanChangeModal();
-    } else {
-      errorDiv.textContent = data.error || "Unable to preview plan change";
+    if (!data.success) {
+      document.getElementById("planChangeErrors").textContent = data.error;
+      return;
     }
-  })
-  .catch(err => {
-    continueBtn.disabled = false;
-    continueBtn.textContent = originalText;
-    errorDiv.textContent = "Network error occurred";
+
+    showConfirmationModal(data);
+
+    // Close ONLY the first modal visually
+    document.getElementById("planChangeModal").style.display = "none";
   });
 }
 
+// ----------------------------------------------------
+// CONFIRMATION MODAL
+// ----------------------------------------------------
 function showConfirmationModal(data) {
   const detailsDiv = document.getElementById("confirmationDetails");
-  
-  if (data.is_upgrade) {
-    detailsDiv.innerHTML = `
-      <div style="margin-bottom: 12px;">
-        <strong style="color: #111;">Plan Change Summary</strong>
-      </div>
-      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-        <span style="color: #666;">Current Plan:</span>
-        <span style="color: #111; font-weight: 600;">${data.current_plan} ($${data.current_price})</span>
-      </div>
-      <div style="display: flex; justify-content: space-between; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e5e7eb;">
-        <span style="color: #666;">New Plan:</span>
-        <span style="color: #111; font-weight: 600;">${data.new_plan} ($${data.new_price})</span>
-      </div>
-      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-        <span style="color: #666;">Prorated Charge Today:</span>
-        <span style="color: #067647; font-weight: 700; font-size: 18px;">$${data.prorated_charge}</span>
-      </div>
-      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-        <span style="color: #666;">Next Billing Date:</span>
-        <span style="color: #111;">${data.next_billing_date}</span>
-      </div>
-      <div style="display: flex; justify-content: space-between;">
-        <span style="color: #666;">Next Billing Amount:</span>
-        <span style="color: #111; font-weight: 600;">$${data.new_price}</span>
-      </div>
-      <div style="margin-top: 12px; padding: 10px; background: #eff6ff; border-radius: 6px; font-size: 13px; color: #1e40af;">
-        💡 You'll be charged $${data.prorated_charge} now for the remaining time in your current billing period at the new rate.
-      </div>
-    `;
-  } else {
-    detailsDiv.innerHTML = `
-      <div style="margin-bottom: 12px;">
-        <strong style="color: #111;">Plan Change Summary</strong>
-      </div>
-      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-        <span style="color: #666;">Current Plan:</span>
-        <span style="color: #111; font-weight: 600;">${data.current_plan} ($${data.current_price})</span>
-      </div>
-      <div style="display: flex; justify-content: space-between; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e5e7eb;">
-        <span style="color: #666;">New Plan:</span>
-        <span style="color: #111; font-weight: 600;">${data.new_plan} ($${data.new_price})</span>
-      </div>
-      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-        <span style="color: #666;">Charge Today:</span>
-        <span style="color: #067647; font-weight: 700; font-size: 18px;">$0.00</span>
-      </div>
-      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-        <span style="color: #666;">Effective Date:</span>
-        <span style="color: #111;">${data.effective_date}</span>
-      </div>
-      <div style="display: flex; justify-content: space-between;">
-        <span style="color: #666;">New Billing Amount:</span>
-        <span style="color: #111; font-weight: 600;">$${data.new_price}</span>
-      </div>
-      <div style="margin-top: 12px; padding: 10px; background: #fff4e5; border-radius: 6px; font-size: 13px; color: #b54708;">
-        ⚠️ Your plan will change on ${data.effective_date}. You'll continue to have access to your current plan until then.
-      </div>
-    `;
-  }
+
+if (data.is_upgrade) {
+  detailsDiv.innerHTML = `
+    <div style="margin-bottom:12px;">
+      <strong style="color:#111;">Plan Change Summary</strong>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+      <span style="color:#666;">Current Plan:</span>
+      <span style="color:#111;font-weight:600;">
+        ${data.current_plan} ($${data.current_price})
+      </span>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;margin-bottom:12px;
+                padding-bottom:12px;border-bottom:1px solid #e5e7eb;">
+      <span style="color:#666;">New Plan:</span>
+      <span style="color:#111;font-weight:600;">
+        ${data.new_plan} ($${data.new_price})
+      </span>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+      <span style="color:#666;">Prorated Charge Today:</span>
+      <span style="color:#067647;font-weight:700;font-size:18px;">
+        $${data.prorated_charge}
+      </span>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+      <span style="color:#666;">Next Billing Date:</span>
+      <span style="color:#111;">
+        ${data.next_billing_date}
+      </span>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;">
+      <span style="color:#666;">Next Billing Amount:</span>
+      <span style="color:#111;font-weight:600;">
+        $${data.new_price}
+      </span>
+    </div>
+
+    <div style="margin-top:12px;padding:10px;
+                background:#eff6ff;border-radius:6px;
+                font-size:13px;color:#1e40af;">
+      💡 You’ll be charged <strong>$${data.prorated_charge}</strong> now for the
+      remaining time in your current billing cycle at the new plan’s rate.
+    </div>
+  `;
+}
+ else {
+  detailsDiv.innerHTML = `
+    <div style="margin-bottom: 12px;">
+      <strong style="color:#111;">Plan Change Summary</strong>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+      <span style="color:#666;">Current Plan:</span>
+      <span style="color:#111;font-weight:600;">
+        ${data.current_plan} ($${data.current_price})
+      </span>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;margin-bottom:12px;
+                padding-bottom:12px;border-bottom:1px solid #e5e7eb;">
+      <span style="color:#666;">New Plan:</span>
+      <span style="color:#111;font-weight:600;">
+        ${data.new_plan} ($${data.new_price})
+      </span>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+      <span style="color:#666;">Charge Today:</span>
+      <span style="color:#067647;font-weight:700;font-size:18px;">
+        $0.00
+      </span>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+      <span style="color:#666;">Effective Date:</span>
+      <span style="color:#111;">
+        ${data.effective_date}
+      </span>
+    </div>
+
+    <div style="margin-top:12px;padding:10px;
+                background:#fff4e5;border-radius:6px;
+                font-size:13px;color:#b54708;">
+      ⚠️ Your plan will change on ${data.effective_date}.
+      You’ll continue to have full access to your current plan until then.
+    </div>
+  `;
+}
 
   document.getElementById("confirmationModal").style.display = "flex";
 }
 
+// ----------------------------------------------------
+// CONFIRM CHANGE
+// ----------------------------------------------------
 function confirmPlanChange() {
+  if (planChangeInProgress) return;
+
   if (!selectedPlanId) {
-    closeConfirmationModal();
+    alert("No plan selected.");
     return;
   }
 
-  const errorDiv = document.getElementById("confirmationErrors");
-  errorDiv.textContent = "";
-  
-  const confirmBtn = document.querySelector('#confirmationModal .modal-actions .primary');
-  const originalText = confirmBtn.textContent;
-  confirmBtn.disabled = true;
-  confirmBtn.textContent = "Processing...";
+  planChangeInProgress = true;
+
+  const btn = document.querySelector("#confirmationModal .primary");
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Processing...";
 
   fetch("{% url 'change_subscription_plan' %}", {
     method: "POST",
@@ -777,21 +820,27 @@ function confirmPlanChange() {
   })
   .then(res => res.json())
   .then(data => {
-    if (data.success) {
-      alert(data.message);
-      location.reload();
-    } else {
-      errorDiv.textContent = data.error || "Unable to change plan";
-      confirmBtn.disabled = false;
-      confirmBtn.textContent = originalText;
+    planChangeInProgress = false;
+    btn.disabled = false;
+    btn.textContent = originalText;
+
+    if (!data.success) {
+      document.getElementById("confirmationErrors").textContent = data.error;
+      return;
     }
+
+    alert(data.message || "Plan updated successfully");
+    closeConfirmationModal();
+    location.reload();
   })
-  .catch(err => {
-    errorDiv.textContent = "Network error occurred";
-    confirmBtn.disabled = false;
-    confirmBtn.textContent = originalText;
+  .catch(() => {
+    planChangeInProgress = false;
+    btn.disabled = false;
+    btn.textContent = originalText;
+    alert("Network error");
   });
 }
+
 
 // Add event listener for Change Plan button
 document.getElementById("change-plan-btn")?.addEventListener("click", openPlanChangeModal);
