@@ -343,21 +343,21 @@
     <div class="subscription-header">
       <h3>Subscription</h3>
 
-      {% if active_subscription %}
-        {% if active_subscription.cancel_at_period_end %}
-          <span class="subscription-badge badge-inactive">
-            Cancels on {{ active_subscription.expires_at|date:"M d, Y" }}
-          </span>
-        {% elif active_subscription.pending_subscription %}
-          <span class="subscription-badge badge-pending">
-            Plan Change Pending
-          </span>
-        {% else %}
-          <span class="subscription-badge badge-active">Active</span>
-        {% endif %}
-      {% else %}
-        <span class="subscription-badge badge-inactive">Inactive</span>
-      {% endif %}
+      {% if active_subscription.pending_subscription %}
+      <span class="subscription-badge badge-pending">
+        Downgrades to {{ active_subscription.pending_subscription.name }} 
+        on {{ active_subscription.expires_at|date:"M d, Y" }}
+      </span>
+
+    {% elif active_subscription.cancel_at_period_end %}
+      <span class="subscription-badge badge-inactive">
+        Cancels on {{ active_subscription.expires_at|date:"M d, Y" }}
+      </span>
+
+    {% else %}
+      <span class="subscription-badge badge-active">Active</span>
+    {% endif %}
+
     </div>
 
     {% if active_subscription %}
@@ -416,34 +416,47 @@
       {% endif %}
 
       <!-- Subscription Action Buttons -->
-    <div class="subscription-actions">
-      {% if can_manage_subscription %}
+  <div class="subscription-actions">
+{% if can_manage_subscription %}
 
-        {% if active_subscription.cancel_at_period_end %}
-          <!-- Subscription already cancelled → allow resume only -->
-          <button id="resume-subscription" class="btn-subscription btn-resume">
-            Resume Subscription
-          </button>
-
-        {% else %}
-          <!-- Normal active subscription -->
-          <button id="change-plan-btn" class="btn-subscription btn-change">
-            Change Plan
-          </button>
-          <button id="cancelSubBtn" class="btn-subscription btn-cancel">
-            Cancel Subscription
-          </button>
-        {% endif %}
-
-      {% else %}
-        <p style="color:#ccc;font-size:13px;">
-          You can change or cancel your subscription after 48 hours.
-          {% if hours_remaining %}
-            (Available in {{ hours_remaining }} hour{{ hours_remaining|pluralize }})
-          {% endif %}
+    {# --- CASE 1: Plan change (downgrade) already scheduled --- #}
+    {% if active_subscription.pending_subscription %}
+        <p style="color:#f59e0b;font-size:13px;">
+            A plan change is already scheduled.
         </p>
-      {% endif %}
-    </div>
+        <button onclick="cancelPlanChange()" class="btn-subscription btn-change">
+            Cancel Plan Change
+        </button>
+
+    {# --- CASE 2: Cancellation already scheduled --- #}
+    {% elif active_subscription.cancel_at_period_end %}
+        <button id="resume-subscription" class="btn-subscription btn-resume">
+            Resume Subscription
+        </button>
+
+    {# --- CASE 3: Normal active subscription --- #}
+    {% else %}
+        <button id="change-plan-btn" class="btn-subscription btn-change">
+            Change Plan
+        </button>
+        <button id="cancelSubBtn" class="btn-subscription btn-cancel">
+            Cancel Subscription
+        </button>
+    {% endif %}
+
+{% else %}
+    <!-- <button id="change-plan-btn" class="btn-subscription btn-change">
+        Change Plan
+    </button> -->
+    <p style="color:#ccc;font-size:13px;">
+        You can change or cancel your subscription after 48 hours.
+        {% if hours_remaining %}
+            (Available in {{ hours_remaining }} hour{{ hours_remaining|pluralize }})
+        {% endif %}
+    </p>
+{% endif %}
+</div>
+
 
 
 
@@ -532,7 +545,6 @@
 </div>
 
 <!-- PLAN CHANGE MODAL -->
-<!-- PLAN CHANGE MODAL -->
 <div id="planChangeModal" class="modal-overlay">
   <div class="modal">
     <h3>Change Subscription Plan</h3>
@@ -581,9 +593,7 @@ let planChangeInProgress = false;
 let selectedPlanId = null;
 let currentPlanPrice = {{ active_subscription.subscription.price|default:0 }};
 
-// ----------------------------------------------------
 // PLAN CHANGE MODALS
-// ----------------------------------------------------
 function openPlanChangeModal() {
   document.getElementById("planChangeModal").style.display = "flex";
   loadAvailablePlans();
@@ -591,17 +601,15 @@ function openPlanChangeModal() {
 
 function closePlanChangeModal() {
   document.getElementById("planChangeModal").style.display = "none";
-  // ❌ DO NOT reset selectedPlanId here
+  //  DO NOT reset selectedPlanId here
 }
 
 function closeConfirmationModal() {
   document.getElementById("confirmationModal").style.display = "none";
-  selectedPlanId = null; // ✅ reset only here
+  selectedPlanId = null;
 }
 
-// ----------------------------------------------------
 // LOAD PLANS
-// ----------------------------------------------------
 function loadAvailablePlans() {
   const currentPlanId = {{ active_subscription.subscription.id|default:0 }};
 
@@ -647,9 +655,7 @@ function loadAvailablePlans() {
   });
 }
 
-// ----------------------------------------------------
 // SELECT PLAN
-// ----------------------------------------------------
 function selectPlan(planId, card) {
   document.querySelectorAll(".plan-card")
     .forEach(c => c.classList.remove("selected"));
@@ -658,9 +664,7 @@ function selectPlan(planId, card) {
   selectedPlanId = planId;
 }
 
-// ----------------------------------------------------
 // PREVIEW CHANGE
-// ----------------------------------------------------
 function previewPlanChange() {
   if (!selectedPlanId) {
     alert("Please select a plan");
@@ -689,9 +693,7 @@ function previewPlanChange() {
   });
 }
 
-// ----------------------------------------------------
 // CONFIRMATION MODAL
-// ----------------------------------------------------
 function showConfirmationModal(data) {
   const detailsDiv = document.getElementById("confirmationDetails");
 
@@ -792,9 +794,7 @@ if (data.is_upgrade) {
   document.getElementById("confirmationModal").style.display = "flex";
 }
 
-// ----------------------------------------------------
 // CONFIRM CHANGE
-// ----------------------------------------------------
 function confirmPlanChange() {
   if (planChangeInProgress) return;
 

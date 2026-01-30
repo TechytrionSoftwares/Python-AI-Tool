@@ -544,10 +544,7 @@ def resume_subscription(request):
     )
 
     if not subscription:
-        return JsonResponse(
-            {"error": "No subscription to resume"},
-            status=400
-        )
+        return JsonResponse({"error": "No subscription to resume"}, status=400)
 
     # Must have payment profiles
     if not subscription.customer_profile_id or not subscription.customer_payment_profile_id:
@@ -561,22 +558,18 @@ def resume_subscription(request):
             status=400
         )
 
-    # Safety: expires_at MUST exist
+    # Must have existing billing cycle
     if not subscription.expires_at:
-        logger.error(
-            f"Resume failed: expires_at missing for user {subscription.user_id}"
-        )
+        logger.error(f"Resume failed: expires_at missing for user {subscription.user_id}")
         return JsonResponse(
             {"error": "Subscription expiry date missing. Please contact support."},
             status=400
         )
 
-    # Authorize.Net should start billing AFTER current period ends
+    #  BILLING CONTINUES FROM ORIGINAL CYCLE END
     start_date = subscription.expires_at.date()
 
-    # ------------------------------------------------
     # Determine Authorize.Net interval
-    # ------------------------------------------------
     if subscription.subscription.billing_type == "monthly":
         interval_length = 1
         interval_unit = "months"
@@ -600,7 +593,7 @@ def resume_subscription(request):
                         "length": interval_length,
                         "unit": interval_unit,
                     },
-                    "startDate": start_date.isoformat(),
+                    "startDate": start_date.isoformat(),  # 👈 CRITICAL
                     "totalOccurrences": "9999",
                 },
                 "amount": str(subscription.subscription.price),
@@ -620,7 +613,6 @@ def resume_subscription(request):
             json=payload,
             timeout=30,
         )
-
         resp.encoding = "utf-8-sig"
         data = json.loads(resp.text)
 
@@ -656,55 +648,32 @@ def resume_subscription(request):
 
         logger.info(f"✓ Created new ARB subscription: {new_subscription_id}")
 
-    except json.JSONDecodeError as e:
-        logger.error(f"JSON decode error: {str(e)}")
-        return JsonResponse(
-            {"error": "Invalid response from payment gateway"},
-            status=500
-        )
-    except requests.RequestException as e:
-        logger.error(f"Request error: {str(e)}")
-        return JsonResponse(
-            {"error": "Failed to connect to payment gateway"},
-            status=500
-        )
     except Exception as e:
         logger.exception("Resume subscription failed")
         return JsonResponse({"error": str(e)}, status=500)
 
     # ------------------------------------------------
-    # UPDATE LOCAL DB (CRITICAL FIX)
+    # LOCAL DATABASE UPDATE (SAFE)
     # ------------------------------------------------
-    now = timezone.now()
 
     subscription.authorize_subscription_id = new_subscription_id
     subscription.cancel_at_period_end = False
-    subscription.started_at = now
-    subscription.expires_at = calculate_expires_at(
-        now,
-        subscription.subscription.billing_type
-    )
 
-    subscription.save(
-        update_fields=[
-            "authorize_subscription_id",
-            "cancel_at_period_end",
-            "started_at",
-            "expires_at",
-        ]
-    )
+    #  DO NOT CHANGE started_at
+    #  DO NOT CHANGE expires_at
 
-    logger.info(
-        f"✓ Subscription resumed successfully for user {request.user.username}"
-    )
+    subscription.save(update_fields=[
+        "authorize_subscription_id",
+        "cancel_at_period_end",
+    ])
+
+    logger.info(f"✓ Subscription resumed for user {request.user.username}")
 
     return JsonResponse({
         "success": True,
-        "message": (
-            "Your subscription has been resumed. "
-            "Billing will continue after the current period ends."
-        )
+        "message": "Your subscription has been resumed and will continue on your original billing date."
     })
+
 
 
 @login_required
@@ -1949,7 +1918,7 @@ def _handle_downgrade(request, current_sub, new_plan):
     try:
         with transaction.atomic():
 
-            # 1️⃣ Create NEW subscription (starts next billing)
+            #  Create NEW subscription (starts next billing)
             create_payload = {
                 "ARBCreateSubscriptionRequest": {
                     "merchantAuthentication": {
@@ -1989,7 +1958,7 @@ def _handle_downgrade(request, current_sub, new_plan):
             if not new_subscription_id:
                 raise Exception("No subscription ID returned from Authorize.Net")
 
-            # 2️⃣ Cancel CURRENT subscription (prevents renewal)
+            #  Cancel CURRENT subscription (prevents renewal)
             cancel_payload = {
                 "ARBCancelSubscriptionRequest": {
                     "merchantAuthentication": {
@@ -2010,7 +1979,7 @@ def _handle_downgrade(request, current_sub, new_plan):
             if cancel_data.get("messages", {}).get("resultCode") != "Ok":
                 raise Exception("Failed to cancel current subscription")
 
-            # 3️⃣ Update local DB state
+            # Update local DB state
             current_sub.cancel_at_period_end = True
             current_sub.pending_subscription = new_plan
             current_sub.pending_authorize_subscription_id = new_subscription_id
