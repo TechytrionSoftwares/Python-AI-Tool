@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <h2>Your Plan Has Been Upgraded 🚀</h2>
+
+  <p>Hi {{ user.first_name|default:user.username }},</p>
+
+  <p>Your subscription has been successfully upgraded.</p>
+
+  <h3>Upgrade Details:</h3>
+  <ul>
+    <li><strong>New Plan:</strong> {{ new_plan }}</li>
+    <li><strong>New Price:</strong> ${{ new_price }}</li>
+    <li><strong>Next Billing Date:</strong> {{ billing_date|date:"F d, Y" }}</li>
+    {% if prorated_charge %}
+    <li><strong>Prorated Charge Today:</strong> ${{ prorated_charge }}</li>
+    {% endif %}
+  </ul>
+
+  <p>You now have immediate access to the upgraded features.</p>
+
+  <p>Thanks for choosing Effective Presentation Tool Team!</p>
+</body>
+</html>

@@ -22,6 +22,8 @@ from dashboard.utils.roles import is_admin
 from decimal import Decimal
 from dashboard.utils.file_validators import validate_audio_video_file
 from dashboard.utils.subscription import has_active_access
+from django.core.cache import cache
+from dashboard.email_service import send_card_updated_success_email
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -39,7 +41,7 @@ from django.core.paginator import Paginator
 from pydub.silence import detect_silence
 from .utils.analyse import transcribe_audio_with_timestamps, analyze_filler_words_from_text, analyze_pacing, analyze_grammar_with_claude_sync, generate_pdf
 import xmltodict
-
+import random
 import asyncio
 import json
 from typing import Dict, List
@@ -49,7 +51,9 @@ from .utils.s3_bucket import upload_to_s3
 from adminpanel.models import Subscription
 from .tasks import process_recording_task
 
-from .models import Payment, UserSubscription
+
+from .models import Payment, UserSubscription, EmailLog
+from .email_service import send_system_email
 from datetime import timedelta
 import requests
 # Add these imports to your existing code
@@ -144,36 +148,33 @@ def calculate_expires_at(started_at, billing_type):
     return None
 
 
+
 def checkout(request, subscription_id):
     """
-    Handles Authorize.Net subscription checkout using Accept.js (ARB) with Customer Profiles
+    FINAL CLEAN CHECKOUT FLOW
+    - Profile reuse (no duplicates)
+    - ARB-safe
+    - Welcome email with credentials
+    - Transaction-safe
     """
-    import json
-    import xmltodict
-    from datetime import timedelta
-    from django.utils import timezone
 
     subscription = get_object_or_404(
         Subscription,
         id=subscription_id,
-        status="published"
+        status="published",
     )
 
     # -------------------------------------------------
-    # GET → Show checkout page
+    # GET → Show checkout
     # -------------------------------------------------
     if request.method == "GET":
         if request.user.is_authenticated:
-            existing_sub = UserSubscription.objects.filter(
-                user=request.user,
-                active=True
-            ).first()
-
-            if existing_sub:
+            if UserSubscription.objects.filter(
+                user=request.user, active=True
+            ).exists():
                 messages.warning(
                     request,
-                    f"You already have an active {existing_sub.subscription.name} subscription. "
-                    f"Go to Settings to manage your plan."
+                    "You already have an active subscription."
                 )
                 return redirect("settings")
 
@@ -184,224 +185,282 @@ def checkout(request, subscription_id):
                 "subscription": subscription,
                 "login_id": settings.AUTHORIZE_NET_LOGIN_ID,
                 "client_key": settings.AUTHORIZE_NET_CLIENT_KEY,
-            }
+            },
         )
 
     # -------------------------------------------------
-    # POST → Process payment
+    # POST → Locked checkout
     # -------------------------------------------------
+    from django.core.cache import cache
+    from django.db import transaction
 
-    # Resolve user
-    if request.user.is_authenticated:
-        user = request.user
-        if UserSubscription.objects.filter(user=user, active=True).exists():
-            messages.error(
-                request,
-                "You already have an active subscription. "
-                "Please manage it from Settings."
-            )
-            return redirect("settings")
-    else:
-        username = request.POST.get("username")
-        email = request.POST.get("email")
-        password = request.POST.get("password")
+    session_key = request.session.session_key or request.session.create()
+    lock_key = f"checkout_lock_{session_key}"
 
-        if not all([username, email, password]):
-            messages.error(request, "All fields are required.")
-            return redirect("checkout", subscription_id=subscription.id)
-
-        existing_user = User.objects.filter(email=email).first()
-        if existing_user and UserSubscription.objects.filter(
-            user=existing_user, active=True
-        ).exists():
-            messages.error(
-                request,
-                "This email already has an active subscription. Please log in."
-            )
-            return redirect("login")
-
-        request.session["pending_user"] = {
-            "username": username,
-            "email": email,
-            "password": password,
-        }
-        user = None
-
-    data_value = request.POST.get("dataValue")
-    data_descriptor = request.POST.get("dataDescriptor")
-
-    if not data_value or not data_descriptor:
-        messages.error(request, "Payment token missing. Please try again.")
+    if cache.get(lock_key):
+        messages.error(request, "Payment is already processing.")
         return redirect("checkout", subscription_id=subscription.id)
 
-    # User identity for Authorize.Net
-    if request.user.is_authenticated:
-        user_email = request.user.email
-        user_name = request.user.username
-    else:
-        pending_user = request.session.get("pending_user")
-        if not pending_user:
-            messages.error(request, "Session expired. Please start again.")
-            return redirect("register")
-        user_email = pending_user["email"]
-        user_name = pending_user["username"]
+    cache.set(lock_key, True, timeout=120)
 
-    # -------------------------------------------------
-    # STEP 1: Create Customer Profile
-    # -------------------------------------------------
     try:
-        profile_payload = {
-            "createCustomerProfileRequest": {
+        # -------------------------------------------------
+        # Resolve user (DO NOT CREATE YET)
+        # -------------------------------------------------
+        user = request.user if request.user.is_authenticated else None
+        is_new_user = False
+
+        username = email = password = None
+
+        if not user:
+            username = request.POST.get("username")
+            email = request.POST.get("email", "").strip().lower()
+            password = request.POST.get("password")
+
+            if not all([username, email, password]):
+                raise Exception("All account fields are required.")
+
+            if User.objects.filter(email=email).exists():
+                raise Exception("Account already exists. Please log in.")
+
+        # -------------------------------------------------
+        # Billing address (required)
+        # -------------------------------------------------
+        billing_address = request.POST.get("billing_address")
+        billing_city = request.POST.get("billing_city")
+        billing_state = request.POST.get("billing_state")
+        billing_zip = request.POST.get("billing_zip")
+        billing_country = request.POST.get("billing_country")
+
+        if not all([
+            billing_address,
+            billing_city,
+            billing_state,
+            billing_zip,
+            billing_country,
+        ]):
+            raise Exception("Billing address is required.")
+
+        # -------------------------------------------------
+        # Accept.js token
+        # -------------------------------------------------
+        data_value = request.POST.get("dataValue")
+        data_descriptor = request.POST.get("dataDescriptor")
+
+        if not data_value or not data_descriptor:
+            raise Exception("Payment token missing.")
+
+        # -------------------------------------------------
+        # Reuse existing Authorize.Net profile if present
+        # -------------------------------------------------
+        customer_profile_id = None
+        customer_payment_profile_id = None
+
+        if user:
+            existing_sub = UserSubscription.objects.filter(
+                user=user
+            ).first()
+
+            if existing_sub and existing_sub.customer_profile_id:
+                customer_profile_id = existing_sub.customer_profile_id
+                customer_payment_profile_id = (
+                    existing_sub.customer_payment_profile_id
+                )
+
+        # -------------------------------------------------
+        # Create profile ONLY if none exists
+        # -------------------------------------------------
+        if not customer_profile_id:
+            profile_payload = {
+                "createCustomerProfileRequest": {
+                    "merchantAuthentication": {
+                        "name": settings.AUTHORIZE_NET_LOGIN_ID,
+                        "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
+                    },
+                    "profile": {
+                        "merchantCustomerId": str(
+                            user.id if user else int(timezone.now().timestamp())
+                        ),
+                        "email": user.email if user else email,
+                        "paymentProfiles": [
+                            {
+                                "customerType": "individual",
+                                "billTo": {
+                                    "firstName": user.username if user else username,
+                                    "lastName": "User",
+                                    "address": billing_address,
+                                    "city": billing_city,
+                                    "state": billing_state,
+                                    "zip": billing_zip,
+                                    "country": billing_country,
+                                },
+                                "payment": {
+                                    "opaqueData": {
+                                        "dataDescriptor": data_descriptor,
+                                        "dataValue": data_value,
+                                    }
+                                },
+                            }
+                        ],
+                    },
+                    # ARB-safe validation
+                    "validationMode": "liveMode",
+                }
+            }
+
+            resp = requests.post(
+                settings.AUTHORIZE_NET_ENDPOINT,
+                json=profile_payload,
+                timeout=60,
+            )
+
+            data = json.loads(resp.content.decode("utf-8-sig"))
+            result = data.get("createCustomerProfileResponse", data)
+
+            if result.get("messages", {}).get("resultCode") != "Ok":
+                raise Exception(result.get("messages"))
+
+            customer_profile_id = result.get("customerProfileId")
+            payment_ids = result.get("customerPaymentProfileIdList")
+
+            if not payment_ids or not isinstance(payment_ids, list):
+                raise Exception("Payment profile creation failed.")
+
+            customer_payment_profile_id = payment_ids[0]
+
+        # -------------------------------------------------
+        # Hard block duplicate subscriptions
+        # -------------------------------------------------
+        if user and UserSubscription.objects.filter(
+            user=user, active=True
+        ).exists():
+            raise Exception("You already have an active subscription.")
+
+        # -------------------------------------------------
+        # Create ARB subscription (if enabled)
+        # -------------------------------------------------
+        interval_length = 1 if subscription.billing_type == "monthly" else 12
+        start_date = (timezone.now() + timedelta(days=1)).date().isoformat()
+
+        arb_payload = {
+            "ARBCreateSubscriptionRequest": {
                 "merchantAuthentication": {
                     "name": settings.AUTHORIZE_NET_LOGIN_ID,
                     "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
                 },
-                "profile": {
-                    "merchantCustomerId": str(int(timezone.now().timestamp()))[:20],
-                    "email": user_email,
-                    "paymentProfiles": {
-                        "customerType": "individual",
-                        "billTo": {
-                            "firstName": user_name,
-                            "lastName": "User",
+                "subscription": {
+                    "name": f"{subscription.name} Subscription",
+                    "paymentSchedule": {
+                        "interval": {
+                            "length": interval_length,
+                            "unit": "months",
                         },
-                        "payment": {
-                            "opaqueData": {
-                                "dataDescriptor": data_descriptor,
-                                "dataValue": data_value,
-                            }
-                        }
-                    }
+                        "startDate": start_date,
+                        "totalOccurrences": "9999",
+                    },
+                    "amount": str(subscription.price),
+                    "profile": {
+                        "customerProfileId": customer_profile_id,
+                        "customerPaymentProfileId": customer_payment_profile_id,
+                    },
                 },
-                "validationMode": "liveMode" if not settings.DEBUG else "testMode"
             }
         }
 
-        profile_response = requests.post(
+        arb_resp = requests.post(
             settings.AUTHORIZE_NET_ENDPOINT,
-            json=profile_payload,
+            json=arb_payload,
             timeout=60,
         )
 
-        raw_profile_text = profile_response.content.decode("utf-8-sig").strip()
-        profile_data = (
-            json.loads(raw_profile_text)
-            if raw_profile_text.startswith("{")
-            else xmltodict.parse(raw_profile_text)
-        )
+        arb_data = json.loads(arb_resp.content.decode("utf-8-sig"))
+        arb_result = arb_data.get("ARBCreateSubscriptionResponse", arb_data)
 
-        profile_result = profile_data.get(
-            "createCustomerProfileResponse", profile_data
-        )
+        if arb_result.get("messages", {}).get("resultCode") != "Ok":
+            raise Exception(
+                "Subscription could not be created. "
+                "Recurring billing may not be enabled on the payment gateway."
+            )
 
-        if profile_result.get("messages", {}).get("resultCode") != "Ok":
-            error = profile_result["messages"]["message"]
-            error_text = error[0]["text"] if isinstance(error, list) else error["text"]
-            messages.error(request, f"Payment setup failed: {error_text}")
-            return redirect("checkout", subscription_id=subscription.id)
+        authorize_subscription_id = arb_result.get("subscriptionId")
 
-        customer_profile_id = profile_result.get("customerProfileId")
-        payment_ids = profile_result.get("customerPaymentProfileIdList", [])
-        customer_payment_profile_id = (
-            payment_ids[0] if isinstance(payment_ids, list) else payment_ids
-        )
+        # -------------------------------------------------
+        # SAVE EVERYTHING ATOMICALLY
+        # -------------------------------------------------
+        with transaction.atomic():
+            if not user:
+                user = User.objects.create_user(
+                    username=username,
+                    email=email,
+                    password=password,
+                )
+                is_new_user = True
 
-        if not customer_profile_id or not customer_payment_profile_id:
-            messages.error(request, "Payment profile creation failed.")
-            return redirect("checkout", subscription_id=subscription.id)
+            UserSubscription.objects.create(
+                user=user,
+                subscription=subscription,
+                active=True,
+                started_at=timezone.now(),
+                expires_at=calculate_expires_at(
+                    timezone.now(), subscription.billing_type
+                ),
+                authorize_subscription_id=authorize_subscription_id,
+                customer_profile_id=customer_profile_id,
+                customer_payment_profile_id=customer_payment_profile_id,
+                billing_address=billing_address,
+                billing_city=billing_city,
+                billing_state=billing_state,
+                billing_zip=billing_zip,
+                billing_country=billing_country,
+            )
 
-    except Exception:
-        messages.error(request, "Unable to create payment profile.")
+            Payment.objects.create(
+                user=user,
+                subscription=subscription,
+                amount=subscription.price,
+                transaction_id=f"ARB-{authorize_subscription_id}",
+                status="success",
+                response_code="OK",
+            )
+
+        # -------------------------------------------------
+        # SEND WELCOME EMAIL (AFTER COMMIT)
+        # -------------------------------------------------
+        def send_welcome_email():
+            context = {
+                "user": user,
+                "plan": subscription.name,
+                "login_url": settings.SITE_NAME + "/login/",
+            }
+
+            if is_new_user:
+                context.update({
+                    "email": user.email,
+                    "password": password,
+                })
+
+            send_system_email(
+                user=user,
+                to_email=user.email,
+                subject="Welcome! Your Subscription is Active 🎉",
+                template_name="emails/welcome_subscription.html",
+                context=context,
+            )
+
+        transaction.on_commit(send_welcome_email)
+
+        messages.success(request, "Subscription activated successfully!")
+        return redirect("settings" if request.user.is_authenticated else "login")
+
+    except Exception as e:
+        logger.exception("Checkout failed")
+        messages.error(request, str(e))
         return redirect("checkout", subscription_id=subscription.id)
 
-    # -------------------------------------------------
-    # STEP 2: Create ARB Subscription
-    # -------------------------------------------------
-    interval_length = 1 if subscription.billing_type == "monthly" else 12
+    finally:
+        cache.delete(lock_key)
 
-    payload = {
-        "ARBCreateSubscriptionRequest": {
-            "merchantAuthentication": {
-                "name": settings.AUTHORIZE_NET_LOGIN_ID,
-                "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
-            },
-            "subscription": {
-                "name": f"{subscription.name} Subscription",
-                "paymentSchedule": {
-                    "interval": {
-                        "length": interval_length,
-                        "unit": "months",
-                    },
-                    "startDate": (timezone.now().date() + timedelta(days=1)).isoformat(),
-                    "totalOccurrences": 9999,
-                },
-                "amount": str(subscription.price),
-                "profile": {
-                    "customerProfileId": customer_profile_id,
-                    "customerPaymentProfileId": customer_payment_profile_id,
-                },
-            },
-        }
-    }
 
-    response = requests.post(
-        settings.AUTHORIZE_NET_ENDPOINT,
-        json=payload,
-        timeout=60,
-    )
-
-    parsed = json.loads(response.content.decode("utf-8-sig"))
-    result = parsed.get("ARBCreateSubscriptionResponse", parsed)
-
-    if result.get("messages", {}).get("resultCode") != "Ok":
-        messages.error(request, "Subscription creation failed.")
-        return redirect("checkout", subscription_id=subscription.id)
-
-    authorize_subscription_id = result.get("subscriptionId")
-    if not authorize_subscription_id:
-        messages.error(request, "Subscription ID missing.")
-        return redirect("checkout", subscription_id=subscription.id)
-
-    # -------------------------------------------------
-    # Create user if needed
-    # -------------------------------------------------
-    if not request.user.is_authenticated:
-        pending_user = request.session.get("pending_user")
-        user = User.objects.create_user(
-            username=pending_user["username"],
-            email=pending_user["email"],
-            password=pending_user["password"],
-        )
-
-    # -------------------------------------------------
-    # SAVE SUBSCRIPTION (CRITICAL FIX HERE)
-    # -------------------------------------------------
-    now = timezone.now()
-
-    UserSubscription.objects.create(
-        user=user,
-        subscription=subscription,
-        active=True,
-        started_at=now,  # ✅ FIX
-        expires_at=calculate_expires_at(now, subscription.billing_type),
-        authorize_subscription_id=authorize_subscription_id,
-        customer_profile_id=customer_profile_id,
-        customer_payment_profile_id=customer_payment_profile_id,
-    )
-
-    Payment.objects.create(
-        user=user,
-        subscription=subscription,
-        amount=subscription.price,
-        transaction_id=authorize_subscription_id,  # kept for compatibility
-        status="success",
-        response_code="OK",
-    )
-
-    request.session.pop("pending_user", None)
-
-    messages.success(request, "Subscription activated successfully!")
-    return redirect("settings" if request.user.is_authenticated else "login")
 
 # PRACTICE TAB (default dashboard)
 @login_required
@@ -447,9 +506,6 @@ def change_password_ajax(request):
 
 
 # @login_required
-from datetime import timedelta
-from django.utils import timezone
-
 def settings_view(request):
     active_subscription = (
         UserSubscription.objects
@@ -1213,7 +1269,7 @@ def speech_tx(request):
                         'filename': file.name,
                         'error': 'Failed to upload to storage'
                     })
-                    recording.delete()  # Clean up database entry
+                    recording.delete()
                     continue
 
                 # Update recording
@@ -1259,20 +1315,18 @@ def speech_tx(request):
     return JsonResponse({"error": "Method not allowed"}, status=405)
 
 @login_required
+@require_POST
 def cancel_subscription(request):
-    if request.method != "POST":
-        return JsonResponse({"error": "Invalid request"}, status=400)
-
     subscription = (
         UserSubscription.objects
         .filter(user=request.user, active=True)
+        .select_related("subscription")
         .first()
     )
 
     if not subscription:
         return JsonResponse({"error": "No active subscription"}, status=400)
 
-    # Already cancelled
     if subscription.cancel_at_period_end:
         return JsonResponse({
             "error": "Subscription is already scheduled for cancellation",
@@ -1282,110 +1336,65 @@ def cancel_subscription(request):
             )
         }, status=400)
 
-    # ------------------------------------------------
-    #  Cancel at Authorize.Net (if applicable)
-    # ------------------------------------------------
-    if subscription.authorize_subscription_id:
-        payload = {
-            "ARBCancelSubscriptionRequest": {
-                "merchantAuthentication": {
-                    "name": settings.AUTHORIZE_NET_LOGIN_ID,
-                    "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
-                },
-                "subscriptionId": subscription.authorize_subscription_id,
-            }
-        }
-
-        try:
-            response = requests.post(
-                settings.AUTHORIZE_NET_ENDPOINT,
-                json=payload,
-                timeout=30,
-            )
-
-            if response.status_code != 200:
-                return JsonResponse(
-                    {"error": "Payment gateway error"},
-                    status=500
-                )
-
-            raw_text = response.content.decode("utf-8-sig").strip()
-
-            if raw_text.startswith("{"):
-                data = json.loads(raw_text)
-            elif raw_text.startswith("<"):
-                import xmltodict
-                data = xmltodict.parse(raw_text)
-            else:
-                return JsonResponse(
-                    {"error": "Invalid gateway response"},
-                    status=500
-                )
-
-            arb_response = (
-                data.get("ARBCancelSubscriptionResponse")
-                or data.get("response")
-                or data
-            )
-
-            messages_block = arb_response.get("messages", {})
-            if messages_block.get("resultCode") != "Ok":
-                return JsonResponse(
-                    {"error": "Unable to cancel subscription"},
-                    status=400
-                )
-
-        except Exception as e:
-            return JsonResponse(
-                {"error": f"Gateway error: {str(e)}"},
-                status=500
-            )
-
-    # ------------------------------------------------
-    #  Update local subscription safely
-    # ------------------------------------------------
     try:
-        subscription.cancel_at_period_end = True
-        subscription.active = True  #  KEEP ACCESS
+        with transaction.atomic():
 
-        #  Correct expiry calculation (NO loops)
-        if subscription.started_at:
-            if subscription.subscription.billing_type == "monthly":
-                subscription.expires_at = (
-                    subscription.started_at + relativedelta(months=1)
-                )
+            subscription.cancel_at_period_end = True
+            subscription.active = True  # keep access
+
+            # Calculate expiry ONCE
+            if subscription.started_at:
+                if subscription.subscription.billing_type == "monthly":
+                    subscription.expires_at = (
+                        subscription.started_at + relativedelta(months=1)
+                    )
+                else:
+                    subscription.expires_at = (
+                        subscription.started_at + relativedelta(years=1)
+                    )
             else:
-                subscription.expires_at = (
-                    subscription.started_at + relativedelta(years=1)
+                subscription.expires_at = timezone.now() + (
+                    relativedelta(months=1)
+                    if subscription.subscription.billing_type == "monthly"
+                    else relativedelta(years=1)
                 )
-        else:
-            subscription.expires_at = timezone.now() + (
-                relativedelta(months=1)
-                if subscription.subscription.billing_type == "monthly"
-                else relativedelta(years=1)
+
+            if subscription.expires_at <= timezone.now():
+                subscription.expires_at = timezone.now() + relativedelta(days=1)
+
+            subscription.save(
+                update_fields=["cancel_at_period_end", "expires_at", "active"]
             )
 
-        # 🛡 Safety guard — never allow past expiry
-        if subscription.expires_at <= timezone.now():
-            subscription.expires_at = timezone.now() + relativedelta(days=1)
-
-        subscription.save(
-            update_fields=["cancel_at_period_end", "expires_at", "active"]
-        )
+        # 📧 Send cancellation email AFTER commit
+        transaction.on_commit(lambda: send_system_email(
+            user=request.user,
+            to_email=request.user.email,
+            subject="Your subscription will end soon",
+            template_name="emails/subscription_cancelled.html",
+            context={
+                "user": request.user,
+                "plan": subscription.subscription.name,
+                "expires_at": subscription.expires_at.strftime("%B %d, %Y"),
+                "site_name": settings.SITE_NAME,
+            },
+        ))
 
         return JsonResponse({
             "success": True,
             "message": (
                 "Your subscription will remain active until "
-                f"{subscription.expires_at.strftime('%B %d, %Y')}"
+                f"{subscription.expires_at.strftime('%B %d, %Y')}."
             )
         })
 
     except Exception as e:
+        logger.exception("Cancel subscription failed")
         return JsonResponse(
-            {"error": f"Database error: {str(e)}"},
+            {"error": "Unable to cancel subscription. Please contact support."},
             status=500
         )
+
 
 logger = logging.getLogger(__name__)
 
@@ -1676,6 +1685,28 @@ def _safe_upgrade_subscription(request, current_sub, new_plan):
                 ]
             )
 
+            # -------------------------------------------------
+            # SEND UPGRADE EMAIL
+            # -------------------------------------------------
+            try:
+                send_system_email(
+                    user=request.user,
+                    to_email=request.user.email,
+                    subject="Your Subscription Has Been Upgraded 🚀",
+                    template_name="emails/subscription_upgraded.html",
+                    context={
+                        "user": request.user,
+                        "old_plan": current_sub.subscription.name,
+                        "new_plan": new_plan.name,
+                        "new_price": new_plan.price,
+                        "billing_date": current_sub.expires_at,
+                        "prorated_charge": prorated_amount,
+                        "site_name": settings.SITE_NAME,
+                    }
+                )
+            except Exception as e:
+                logger.error(f"Upgrade email failed: {str(e)}")
+
             logger.info("Upgrade completed successfully")
 
             return JsonResponse({
@@ -1694,120 +1725,6 @@ def _safe_upgrade_subscription(request, current_sub, new_plan):
             {"error": "Unable to upgrade subscription. Please contact support."},
             status=500
         )
-
-
-
-
-
-# def _handle_downgrade(request, current_sub, new_plan):
-#     """
-#     Handle subscription downgrades:
-#     - Schedule the downgrade to take effect at next billing date
-#     - User keeps current plan until then
-#     """
-    
-#     try:
-#         with transaction.atomic():
-#             # Cancel any existing pending subscription
-#             _cancel_pending_subscription_if_any(current_sub)
-
-#             # Calculate next billing date
-#             next_billing_date = current_sub.expires_at.date()
-#             today = timezone.now().date()
-            
-#             # If billing date passed, calculate next occurrence
-#             if next_billing_date <= today:
-#                 if new_plan.billing_type == "monthly":
-#                     next_month = today.replace(day=1) + timedelta(days=32)
-#                     try:
-#                         next_billing_date = next_month.replace(day=current_sub.started_at.day)
-#                     except ValueError:
-#                         next_billing_date = next_month.replace(day=28)
-#                 else:  # yearly
-#                     next_year = today.year + 1
-#                     try:
-#                         next_billing_date = today.replace(year=next_year, day=current_sub.started_at.day)
-#                     except ValueError:
-#                         next_billing_date = today.replace(year=next_year, day=28)
-            
-#             # Make sure it's in the future
-#             if next_billing_date <= today:
-#                 next_billing_date = today + timedelta(days=1)
-
-#             interval_length = 1 if new_plan.billing_type == "monthly" else 12
-
-#             # Create NEW subscription starting at next billing date
-#             create_payload = {
-#                 "ARBCreateSubscriptionRequest": {
-#                     "merchantAuthentication": {
-#                         "name": settings.AUTHORIZE_NET_LOGIN_ID,
-#                         "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
-#                     },
-#                     "subscription": {
-#                         "name": new_plan.name,
-#                         "paymentSchedule": {
-#                             "interval": {
-#                                 "length": interval_length,
-#                                 "unit": "months"
-#                             },
-#                             "startDate": next_billing_date.isoformat(),
-#                             "totalOccurrences": "9999",
-#                         },
-#                         "amount": str(new_plan.price),
-#                         "profile": {
-#                             "customerProfileId": current_sub.customer_profile_id,
-#                             "customerPaymentProfileId": current_sub.customer_payment_profile_id,
-#                         },
-#                     }
-#                 }
-#             }
-
-#             create_resp = requests.post(
-#                 settings.AUTHORIZE_NET_ENDPOINT,
-#                 json=create_payload,
-#                 timeout=30,
-#             )
-
-#             create_data = parse_authorize_response(create_resp)
-#             response = create_data.get("ARBCreateSubscriptionResponse", {})
-            
-#             # Check for errors
-#             result_code = response.get("messages", {}).get("resultCode")
-#             if result_code != "Ok":
-#                 messages = response.get("messages", {})
-#                 message_list = messages.get("message", [])
-#                 if message_list:
-#                     error_text = message_list[0].get("text", "Unknown error")
-#                 else:
-#                     error_text = "Subscription creation failed"
-                
-#                 raise Exception(error_text)
-            
-#             new_arb_id = response.get("subscriptionId")
-#             if not new_arb_id:
-#                 raise Exception("No subscription ID returned from Authorize.Net")
-
-#             # Store pending subscription info (DON'T cancel current yet)
-#             current_sub.pending_subscription = new_plan
-#             current_sub.pending_authorize_subscription_id = new_arb_id
-#             current_sub.save(update_fields=[
-#                 "pending_subscription",
-#                 "pending_authorize_subscription_id"
-#             ])
-
-#             return JsonResponse({
-#                 "success": True,
-#                 "message": (
-#                     f"Your plan will change to {new_plan.name} on "
-#                     f"{next_billing_date.strftime('%B %d, %Y')}. "
-#                     f"You'll continue to have access to {current_sub.subscription.name} until then."
-#                 ),
-#                 "effective_date": next_billing_date.strftime('%Y-%m-%d'),
-#             })
-
-#     except Exception as e:
-#         logger.exception("Downgrade failed")
-#         return JsonResponse({"error": str(e)}, status=500)
 
 
 
@@ -1991,6 +1908,20 @@ def _handle_downgrade(request, current_sub, new_plan):
                 ]
             )
 
+            # Send downgrade email notification
+            send_system_email(
+                user=request.user,
+                to_email=request.user.email,
+                subject="Your subscription downgrade is scheduled",
+                template_name="emails/subscription_downgrade_scheduled.html",
+                context={
+                    "user": request.user,
+                    "current_plan": current_sub.subscription.name,
+                    "new_plan": new_plan.name,
+                    "effective_date": current_sub.expires_at.strftime("%B %d, %Y"),
+                },
+            )
+
             return JsonResponse({
                 "success": True,
                 "downgrade": True,
@@ -2090,7 +2021,279 @@ def cancel_plan_change(request):
     current_sub.pending_authorize_subscription_id = None
     current_sub.save(update_fields=['pending_subscription', 'pending_authorize_subscription_id'])
 
+    transaction.on_commit(lambda: send_system_email(
+    user=request.user,
+    to_email=request.user.email,
+    subject="Your scheduled plan change has been cancelled",
+    template_name="emails/subscription_plan_change_cancelled.html",
+    context={
+        "user": request.user,
+        "current_plan": current_sub.subscription.name,
+    },
+   ))
+
+
     return JsonResponse({
         "success": True,
         "message": "Plan change cancelled successfully. The scheduled subscription has been cancelled in Authorize.Net."
+    })
+
+
+def forgot_password(request):
+    if request.method == "POST":
+        email = request.POST.get("email")
+
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            messages.error(request, "No account found with this email")
+            return redirect("forgot_password")
+
+        otp = random.randint(100000, 999999)
+
+        # Store OTP data in session
+        request.session["reset_otp"] = str(otp)
+        request.session["reset_user_id"] = user.id
+        request.session["reset_otp_created_at"] = timezone.now().isoformat()
+
+        try:
+            send_system_email(
+                user=user,
+                to_email=email,
+                subject="Password Reset OTP 🔐",
+                template_name="emails/password_reset_otp.html",
+                context={
+                    "user": user,
+                    "otp": otp,
+                    "site_name": settings.SITE_NAME,
+                }
+            )
+            logger.info(f"Password reset OTP sent to {email}")
+
+        except Exception as e:
+            logger.error(f"Password reset email failed: {str(e)}")
+            messages.error(request, "Failed to send OTP. Try again.")
+            return redirect("forgot_password")
+
+        messages.success(request, "OTP sent to your email")
+        return redirect("reset_password")
+
+    return render(request, "forgot_password.html")
+
+def reset_password(request):
+    if request.method == "POST":
+        otp = request.POST.get("otp")
+        password = request.POST.get("password")
+        confirm_password = request.POST.get("confirm_password")
+
+        session_otp = request.session.get("reset_otp")
+        user_id = request.session.get("reset_user_id")
+        otp_created_at = request.session.get("reset_otp_created_at")
+
+        if not session_otp or not user_id or not otp_created_at:
+            messages.error(request, "OTP session expired. Please try again.")
+            return redirect("forgot_password")
+
+        otp_created_at = timezone.datetime.fromisoformat(otp_created_at)
+        otp_expiry_time = otp_created_at + timedelta(minutes=5)
+
+        if timezone.now() > otp_expiry_time:
+            messages.error(request, "OTP expired. Please request again.")
+            return redirect("forgot_password")
+
+        if otp != session_otp:
+            messages.error(request, "Invalid OTP")
+            return redirect("reset_password")
+
+        if password != confirm_password:
+            messages.error(request, "Passwords do not match")
+            return redirect("reset_password")
+
+        user = User.objects.get(id=user_id)
+        user.set_password(password)
+        user.save()
+
+        #  SEND CONFIRMATION EMAIL WITH NEW PASSWORD
+        try:
+            send_system_email(
+                user=user,
+                to_email=user.email,
+                subject="Your Password Has Been Reset 🔐",
+                template_name="emails/password_reset_success.html",
+                context={
+                    "user": user,
+                    "password": password,  # plain password (as requested)
+                    "site_name": settings.SITE_NAME,
+                }
+            )
+            logger.info(f"Password reset confirmation email sent to {user.email}")
+
+        except Exception as e:
+            logger.error(f"Password reset success email failed: {str(e)}")
+
+        # cleanup session
+        del request.session["reset_otp"]
+        del request.session["reset_user_id"]
+        del request.session["reset_otp_created_at"]
+
+        messages.success(request, "Password reset successful. Please login.")
+        return redirect("login")
+
+    return render(request, "reset_password.html")
+
+def resend_otp(request):
+    user_id = request.session.get("reset_user_id")
+
+    if not user_id:
+        messages.error(request, "Session expired. Try again.")
+        return redirect("forgot_password")
+
+    user = User.objects.get(id=user_id)
+    otp = random.randint(100000, 999999)
+
+    request.session["reset_otp"] = str(otp)
+    request.session["reset_otp_created_at"] = timezone.now().isoformat()
+
+    try:
+        send_system_email(
+            user=user,
+            to_email=user.email,
+            subject="Your New OTP 🔐",
+            template_name="emails/password_reset_otp.html",
+            context={
+                "user": user,
+                "otp": otp,
+                "site_name": settings.SITE_NAME,
+            }
+        )
+        logger.info(f"OTP resent to {user.email}")
+
+    except Exception as e:
+        logger.error(f"Resend OTP failed: {str(e)}")
+        messages.error(request, "Failed to resend OTP")
+        return redirect("reset_password")
+
+    messages.success(request, "New OTP sent to your email")
+    return redirect("reset_password")
+
+@login_required
+def update_card_page(request):
+    """
+    Show Update Card page (Accept.js form)
+    """
+    user_sub = UserSubscription.objects.filter(
+        user=request.user,
+        active=True
+    ).first()
+
+    if not user_sub:
+        messages.error(request, "No active subscription found.")
+        return redirect("settings")
+
+    return render(request, "update_card.html", {
+        "login_id": settings.AUTHORIZE_NET_LOGIN_ID,
+        "client_key": settings.AUTHORIZE_NET_CLIENT_KEY,
+    })
+
+
+@login_required
+@require_POST
+def update_card(request):
+    try:
+        body = json.loads(request.body)
+        data_descriptor = body.get("dataDescriptor")
+        data_value = body.get("dataValue")
+    except Exception:
+        return JsonResponse({"error": "Invalid request"}, status=400)
+
+    if not data_descriptor or not data_value:
+        return JsonResponse({"error": "Missing payment data"}, status=400)
+
+    user_sub = UserSubscription.objects.filter(
+        user=request.user,
+        active=True
+    ).first()
+
+    if not user_sub or not user_sub.customer_profile_id:
+        return JsonResponse({"error": "No subscription found"}, status=400)
+
+    # -------------------------------------------------
+    # CREATE NEW PAYMENT PROFILE (CORRECT WAY)
+    # -------------------------------------------------
+    payload = {
+        "createCustomerPaymentProfileRequest": {
+            "merchantAuthentication": {
+                "name": settings.AUTHORIZE_NET_LOGIN_ID,
+                "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
+            },
+            "customerProfileId": user_sub.customer_profile_id,
+            "paymentProfile": {
+                "billTo": {
+                    "firstName": user_sub.user.first_name or user_sub.user.username,
+                    "lastName": user_sub.user.last_name or "user",
+                },
+                "payment": {
+                    "opaqueData": {
+                        "dataDescriptor": data_descriptor,
+                        "dataValue": data_value,
+                    }
+                },
+                "defaultPaymentProfile": True
+            },
+            "validationMode": "testMode"
+        }
+    }
+
+    resp = requests.post(
+        settings.AUTHORIZE_NET_ENDPOINT,
+        json=payload,
+        timeout=30,
+    )
+
+    data = json.loads(resp.content.decode("utf-8-sig"))
+    result = data.get("createCustomerPaymentProfileResponse", data)
+
+    if result.get("messages", {}).get("resultCode") != "Ok":
+        error_msg = result.get("messages", {}).get("message", [{}])[0].get("text")
+        return JsonResponse({"error": error_msg, "raw": result}, status=400)
+
+    new_payment_profile_id = result.get("customerPaymentProfileId")
+
+    if not new_payment_profile_id:
+        return JsonResponse({"error": "Payment profile not created"}, status=400)
+
+    # -------------------------------------------------
+    # OPTIONAL: DELETE OLD PAYMENT PROFILE
+    # -------------------------------------------------
+    if user_sub.customer_payment_profile_id:
+        delete_payload = {
+            "deleteCustomerPaymentProfileRequest": {
+                "merchantAuthentication": {
+                    "name": settings.AUTHORIZE_NET_LOGIN_ID,
+                    "transactionKey": settings.AUTHORIZE_NET_TRANSACTION_KEY,
+                },
+                "customerProfileId": user_sub.customer_profile_id,
+                "customerPaymentProfileId": user_sub.customer_payment_profile_id,
+            }
+        }
+
+        requests.post(
+            settings.AUTHORIZE_NET_ENDPOINT,
+            json=delete_payload,
+            timeout=30,
+        )
+
+    # -------------------------------------------------
+    # UPDATE LOCAL DB
+    # -------------------------------------------------
+    user_sub.customer_payment_profile_id = new_payment_profile_id
+    user_sub.save(update_fields=["customer_payment_profile_id"])
+
+    transaction.on_commit(
+        lambda: send_card_updated_success_email(request.user)
+    )
+
+    return JsonResponse({
+        "success": True,
+        "message": "Your card has been updated successfully. Future payments will use this card."
     })

@@ -17,8 +17,37 @@ from dashboard.models import Payment
 from django.shortcuts import get_object_or_404
 from django.db.models import Sum
 import re
+from dashboard.models import EmailLog
 
 # from dashboard.models import UserSubscription
+@login_required
+def email_logs_view(request):
+    search = request.GET.get("q", "")
+    status = request.GET.get("status", "")
+
+    logs = EmailLog.objects.all().order_by("-created_at")
+
+    #  Search filter
+    if search:
+        logs = logs.filter(
+            Q(to_email__icontains=search) |
+            Q(subject__icontains=search)
+        )
+
+    #  Status filter
+    if status:
+        logs = logs.filter(status=status)
+
+    #  Pagination
+    paginator = Paginator(logs, 10)  # 10 per page
+    page_number = request.GET.get("page")
+    page_obj = paginator.get_page(page_number)
+
+    return render(request, "adminpanel/email_logs.html", {
+        "page_obj": page_obj,
+        "search": search,
+        "status": status,
+    })
 
 @login_required
 def order_detail_view(request, encoded_id):

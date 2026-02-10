@@ -1,0 +1,26 @@
+<p>Hi {{ user.username }},</p>
+
+<p>
+We were unable to process your subscription payment because your
+<strong>payment method has expired or is no longer valid</strong>.
+</p>
+
+<p>
+<strong>Plan:</strong> {{ plan }}
+</p>
+
+<p>
+To avoid interruption, please update your card details:
+</p>
+
+<p>
+<a href="{{ update_url }}">Update Payment Method</a>
+</p>
+
+<p>
+Once updated, your subscription will resume automatically.
+</p>
+
+<p>
+— {{ site_name }} Team
+</p>

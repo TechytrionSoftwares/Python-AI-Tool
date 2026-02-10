@@ -88,6 +88,12 @@ class UserSubscription(models.Model):
         help_text='Authorize.Net subscription ID for pending downgrade'
     )
 
+    billing_address = models.CharField(max_length=255, null=True, blank=True)
+    billing_city = models.CharField(max_length=100, null=True, blank=True)
+    billing_state = models.CharField(max_length=50, null=True, blank=True)
+    billing_zip = models.CharField(max_length=20, null=True, blank=True)
+    billing_country = models.CharField(max_length=2, default="US")
+
     def __str__(self):
         return f"{self.user.username} → {self.subscription.name}"        
 
@@ -108,6 +114,39 @@ class Payment(models.Model):
     status = models.CharField(max_length=20)  # success / failed
     response_code = models.CharField(max_length=20)
     created_at = models.DateTimeField(auto_now_add=True)
+    failure_reason = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True
+    )
 
     def __str__(self):
-        return f"{self.transaction_id} - {self.status}"        
+        return f"{self.transaction_id} - {self.status}"
+
+class EmailLog(models.Model):
+    STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("sent", "Sent"),
+        ("failed", "Failed"),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+    to_email = models.EmailField()
+    subject = models.CharField(max_length=255)
+    body = models.TextField()
+
+    template_name = models.CharField(max_length=100, blank=True, null=True)
+
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    error_message = models.TextField(blank=True, null=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    sent_at = models.DateTimeField(blank=True, null=True)
+
+    def __str__(self):
+        return f"{self.to_email} - {self.subject} ({self.status})"
