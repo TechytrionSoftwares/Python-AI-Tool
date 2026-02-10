@@ -44,6 +44,12 @@
                 </a>
             </li>
 
+            <li class="{% if request.resolver_match.url_name == 'admin_email_logs' %}active{% endif %}">
+                <a href="{% url 'admin_email_logs' %}">
+                    <i class="fa-solid fa-envelope"></i> Email Logs
+                </a>
+            </li>
+
             <li class="{% if request.resolver_match.url_name == 'admin-settings' %}active{% endif %}">
                 <a href="#">
                     <i class="fa-solid fa-gear"></i> Settings
