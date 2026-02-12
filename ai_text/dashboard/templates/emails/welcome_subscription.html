@@ -1,0 +1,19 @@
+<p>Hi {{ user.username }},</p>
+
+<p>Your subscription to <strong>{{ plan }}</strong> is now active 🎉</p>
+
+{% if password %}
+<p><strong>Your login details:</strong></p>
+<ul>
+  <li>Email: {{ email }}</li>
+  <li>Password: {{ password }}</li>
+</ul>
+<p>Please log in and change your password after first login.</p>
+{% endif %}
+
+<p>
+Login here:
+<a href="{{ login_url }}">{{ login_url }}</a>
+</p>
+
+<p>Thanks,<br>The Team</p>

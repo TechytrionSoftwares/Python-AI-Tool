@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from .views import email_logs_view
 
 urlpatterns = [
     path("", views.admin_dashboard, name="admin-dashboard"),
@@ -9,6 +10,7 @@ urlpatterns = [
     path("users/", views.users_list, name="admin-users"),
     path('logout/', views.logout_user, name='logout'),
     path("subscriptions/create/", views.create_subscription_view, name="admin-create-subscription"),
+    path("email-logs/", email_logs_view, name="admin_email_logs"),
     path(
         "orders/<str:encoded_id>/",
         views.order_detail_view,

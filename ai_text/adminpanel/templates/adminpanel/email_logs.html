@@ -1,0 +1,78 @@
+{% include "adminpanel/header.html" %}
+
+<div class="layout">
+
+    {% include "adminpanel/sidebar.html" %}
+
+    <main class="main">
+        <h2 class="top-head">Email Logs</h2>
+
+        <div class="table-box">
+<form method="get" class="search-box">
+    <input type="text" name="q" placeholder="Search email or subject..." value="{{ search }}">
+
+    <select name="status">
+        <option value="">All Status</option>
+        <option value="sent" {% if status == "sent" %}selected{% endif %}>Sent</option>
+        <option value="failed" {% if status == "failed" %}selected{% endif %}>Failed</option>
+        <option value="pending" {% if status == "pending" %}selected{% endif %}>Pending</option>
+    </select>
+
+    <button type="submit">Search</button>
+</form>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>To</th>
+                        <th>Subject</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Sent</th>
+                        <th>Error</th>
+                    </tr>
+                </thead>
+               <tbody>
+    {% for log in page_obj %}
+    <tr>
+        <td>{{ log.to_email }}</td>
+        <td>{{ log.subject }}</td>
+        <td>
+            {% if log.status == "sent" %}
+                <span class="badge success">Sent</span>
+            {% elif log.status == "failed" %}
+                <span class="badge danger">Failed</span>
+            {% else %}
+                <span class="badge">Pending</span>
+            {% endif %}
+        </td>
+        <td>{{ log.created_at|date:"Y-m-d H:i" }}</td>
+        <td>{{ log.sent_at|date:"Y-m-d H:i"|default:"—" }}</td>
+        <td style="color:red;">{{ log.error_message|default:"—" }}</td>
+    </tr>
+    {% empty %}
+    <tr>
+        <td colspan="6">No email logs found</td>
+    </tr>
+    {% endfor %}
+</tbody>
+
+            </table>
+<div class="pagination">
+    {% if page_obj.has_previous %}
+        <a href="?page=1&q={{ search }}&status={{ status }}">« First</a>
+        <a href="?page={{ page_obj.previous_page_number }}&q={{ search }}&status={{ status }}">‹ Prev</a>
+    {% endif %}
+
+    <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+
+    {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}&q={{ search }}&status={{ status }}">Next ›</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}&q={{ search }}&status={{ status }}">Last »</a>
+    {% endif %}
+</div>
+
+        </div>
+    </main>
+
+</div>

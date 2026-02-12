@@ -26,4 +26,20 @@ urlpatterns = [
     path('subscription/change-plan/', views.change_subscription_plan, name='change_subscription_plan'),
     path('subscription/cancel-plan-change/', views.cancel_plan_change, name='cancel_plan_change'),
     path('subscription/preview-change/', views.preview_plan_change, name='preview_plan_change'),
+    path('forgot-password/', views.forgot_password, name='forgot_password'),
+    path("reset-password/", views.reset_password, name="reset_password"),
+    path("resend-otp/", views.resend_otp, name="resend_otp"),
+    path(
+        "dashboard/subscription/update-card/",
+        views.update_card_page,
+        name="update_card_page"
+    ),
+
+    path(
+        "dashboard/subscription/update-card/submit/",
+        views.update_card,
+        name="update_card"
+    ),
+
+
 ]

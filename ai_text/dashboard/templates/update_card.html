@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<script src="https://jstest.authorize.net/v1/Accept.js"></script>
+<style>
+  .settings-container {
+    max-width: 700px;
+    margin: 40px auto;
+  }
+
+  .card {
+    background: rgba(255,255,255,0.12);
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+  }
+
+  .field {
+    margin-bottom: 18px;
+  }
+
+  .field label {
+    display: block;
+    font-size: 14px;
+    color: #fff;
+    margin-bottom: 6px;
+  }
+
+  .field input {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    background: #f7f7f7;
+    font-size: 14px;
+  }
+
+  .actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+  }
+
+  .btn-primary {
+    background: #5b6cff;
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+  }
+
+  .btn-primary:hover {
+    background: #4552d9;
+  }
+
+  .btn-secondary {
+    background: transparent;
+    border: 1px solid #ccc;
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    text-decoration: none;
+  }
+
+  .error-text {
+    color: #f87171;
+    font-size: 13px;
+    margin-top: 12px;
+  }
+
+  .success-text {
+    color: #34d399;
+    font-size: 14px;
+    margin-top: 12px;
+  }
+
+  .info-box {
+    background: rgba(255,255,255,0.08);
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 13px;
+    color: #e5e7eb;
+    margin-bottom: 20px;
+  }
+</style>
+
+<div class="settings-container">
+  <h2>Update Payment Method</h2>
+
+  <div class="card">
+    <div class="info-box">
+      🔒 Your card details are securely processed by Authorize.Net.
+      We never store your card number.
+    </div>
+
+    <form id="updateCardForm">
+      <div class="field">
+        <label>Card Number</label>
+        <input
+          type="text"
+          id="cardNumber"
+          placeholder="•••• •••• •••• ••••"
+          inputmode="numeric"
+          maxlength="19"
+          autocomplete="cc-number"
+          required
+        >
+      </div>
+
+      <div class="field">
+        <label>Expiration Month</label>
+        <input
+          type="text"
+          id="expMonth"
+          placeholder="MM"
+          inputmode="numeric"
+          maxlength="2"
+          autocomplete="cc-exp-month"
+          required
+        >
+      </div>
+
+      <div class="field">
+        <label>Expiration Year</label>
+        <input
+          type="text"
+          id="expYear"
+          placeholder="YYYY"
+          inputmode="numeric"
+          maxlength="4"
+          autocomplete="cc-exp-year"
+          required
+        >
+      </div>
+
+      <div class="field">
+        <label>CVV</label>
+        <input
+          type="password"
+          id="cardCode"
+          placeholder="•••"
+          inputmode="numeric"
+          maxlength="4"
+          autocomplete="cc-csc"
+          required
+        >
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="btn-primary">
+          Update Card
+        </button>
+        <a href="{% url 'settings' %}" class="btn-secondary">
+          Cancel
+        </a>
+      </div>
+
+      <div id="formError" class="error-text"></div>
+      <div id="formSuccess" class="success-text"></div>
+    </form>
+  </div>
+</div>
+
+
+
+<script>
+const authData = {
+  clientKey: "{{ client_key }}",
+  apiLoginID: "{{ login_id }}"
+};
+console.log("LOGIN:", "{{ login_id }}");
+console.log("CLIENT:", "{{ client_key }}");
+
+// --------------------
+// Card number formatting
+// --------------------
+document.getElementById("cardNumber").addEventListener("input", function (e) {
+  let value = e.target.value.replace(/\D/g, "");
+  value = value.substring(0, 19);
+  e.target.value = value.replace(/(.{4})/g, "$1 ").trim();
+});
+
+// --------------------
+// Expiry validation
+// --------------------
+function isValidExpiry(month, year) {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+
+  month = parseInt(month, 10);
+  year = parseInt(year, 10);
+
+  if (isNaN(month) || isNaN(year)) return false;
+  if (month < 1 || month > 12) return false;
+  if (year < currentYear || year > currentYear + 20) return false;
+  if (year === currentYear && month < currentMonth) return false;
+
+  return true;
+}
+
+// --------------------
+// Form submit handler
+// --------------------
+document.getElementById("updateCardForm").addEventListener("submit", function (e) {
+  e.preventDefault();
+
+  const errorEl = document.getElementById("formError");
+  const successEl = document.getElementById("formSuccess");
+  errorEl.textContent = "";
+  successEl.textContent = "";
+
+  const cardNumber = document.getElementById("cardNumber").value.replace(/\s+/g, "");
+  const expMonth = document.getElementById("expMonth").value;
+  const expYear = document.getElementById("expYear").value;
+  const cvv = document.getElementById("cardCode").value;
+
+  if (!/^\d{13,19}$/.test(cardNumber)) {
+    errorEl.textContent = "Please enter a valid card number (13–19 digits).";
+    return;
+  }
+
+  if (!/^\d{3,4}$/.test(cvv)) {
+    errorEl.textContent = "CVV must be 3 or 4 digits.";
+    return;
+  }
+
+  if (!isValidExpiry(expMonth, expYear)) {
+    errorEl.textContent = "Please enter a valid expiration date.";
+    return;
+  }
+
+  const cardData = {
+    cardNumber: cardNumber,
+    month: expMonth,
+    year: expYear,
+    cardCode: cvv
+  };
+
+  Accept.dispatchData(
+    { authData, cardData },
+    function (response) {
+      if (response.messages.resultCode === "Error") {
+        errorEl.textContent = response.messages.message[0].text;
+        return;
+      }
+
+      fetch("{% url 'update_card' %}", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": "{{ csrf_token }}"
+        },
+        body: JSON.stringify({
+          dataDescriptor: response.opaqueData.dataDescriptor,
+          dataValue: response.opaqueData.dataValue
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          successEl.textContent =
+            "✅ Card updated successfully. Future payments will use this card.";
+          document.getElementById("updateCardForm").reset();
+        } else {
+          errorEl.textContent = data.error || "Unable to update card.";
+        }
+      })
+      .catch(() => {
+        errorEl.textContent = "Network error. Please try again.";
+      });
+    }
+  );
+});
+</script>
+{% endblock %}
